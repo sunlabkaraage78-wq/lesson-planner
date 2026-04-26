@@ -273,12 +273,22 @@ export default function ProgressView() {
   const [selectedTermIdx, setSelectedTermIdx] = useState(0);
   const [showAutoFill, setShowAutoFill] = useState(false);
   const [mobileClassId, setMobileClassId] = useState(null);
+  const todayRef = useRef(null);
+
+  const todayStr = useMemo(() => toDateStr(new Date()), []);
 
   const validTerms = useMemo(() => (terms || []).filter(t => t.start && t.end), [terms]);
   const activeSubjectId = selectedSubjectId ?? subjects[0]?.id ?? null;
 
   // 科目切替時にモバイルクラス選択をリセット
   useEffect(() => { setMobileClassId(null); }, [activeSubjectId]);
+
+  // 今日の行へ自動スクロール
+  useEffect(() => {
+    if (todayRef.current) {
+      todayRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [activeSubjectId, selectedTermIdx, mobileClassId]);
   const holidays = useMemo(() => getSchoolYearHolidays(schoolYear), [schoolYear]);
 
   const linkedClasses = useMemo(() => {
@@ -526,11 +536,16 @@ export default function ProgressView() {
                       const isHoliday = !!holidays[dateStr];
                       const anyLesson = linkedClasses.some(cls => classDateSets[cls.id]?.has(dateStr));
                       if (!anyLesson) return null;
-                      const dateTextColor = isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
-                      const dowTextColor  = isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400';
+                      const isToday = dateStr === todayStr;
+                      const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
+                      const dowTextColor  = isToday ? 'text-teal-500' : isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400';
                       return (
-                        <tr key={dateStr}>
-                          <td className={`border border-gray-200 text-center whitespace-nowrap px-2 py-1 ${dateTextColor}`}>{formatMonth(dateStr)}</td>
+                        <tr key={dateStr} className={isToday ? 'bg-teal-50' : ''}
+                          style={isToday ? { outline: '2px solid #0d9488', outlineOffset: '-1px' } : {}}>
+                          <td className={`border border-gray-200 text-center whitespace-nowrap px-2 py-1 ${dateTextColor}`}>
+                            {isToday && <div className="text-[10px] font-bold text-white rounded px-0.5 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>}
+                            {formatMonth(dateStr)}
+                          </td>
                           <td className={`border border-gray-200 text-center whitespace-nowrap px-2 py-1 font-medium ${dateTextColor}`}>{formatDay(dateStr)}</td>
                           <td className={`border border-gray-200 text-center whitespace-nowrap px-2 py-1 ${dowTextColor}`}>{formatWeek(dateStr)}</td>
                           {linkedClasses.map(cls => {
@@ -569,11 +584,25 @@ export default function ProgressView() {
                     const dow = new Date(dateStr).getDay();
                     const isSun = dow === 0, isSat = dow === 6;
                     const isHoliday = !!holidays[dateStr];
-                    const dateTextColor = isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
+                    const isToday = dateStr === todayStr;
+                    const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
                     return (
-                      <div key={dateStr} className={`bg-white rounded-lg border p-2 ${record.shifted ? 'border-red-300' : 'border-gray-200'}`}>
+                      <div
+                        key={dateStr}
+                        ref={isToday ? todayRef : null}
+                        className={`rounded-lg border p-2 ${
+                          isToday
+                            ? 'border-teal-400 bg-teal-50 shadow-sm'
+                            : record.shifted
+                            ? 'bg-white border-red-300'
+                            : 'bg-white border-gray-200'
+                        }`}
+                      >
                         <div className="flex gap-2 items-start">
                           <div className={`shrink-0 w-12 text-xs text-center ${dateTextColor}`}>
+                            {isToday && (
+                              <div className="text-[10px] font-bold text-white rounded px-1 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>
+                            )}
                             <div className="font-medium">{formatMonth(dateStr)}/{formatDay(dateStr)}</div>
                             <div className="opacity-60">{formatWeek(dateStr)}曜</div>
                           </div>
@@ -671,20 +700,26 @@ export default function ProgressView() {
                       }
                     }
 
+                    const isToday = dateStr === todayStr;
                     let rowClass = '';
-                    if (hasNote) rowClass = 'bg-amber-50';
+                    if (isToday) rowClass = 'bg-teal-50';
+                    else if (hasNote) rowClass = 'bg-amber-50';
                     else if (isWeekend) rowClass = 'bg-gray-100';
                     else if (isHoliday) rowClass = 'bg-red-50';
                     else if (!anyLesson) rowClass = 'bg-gray-50';
 
                     const compact = !anyLesson;
-                    const dateTextColor = isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
-                    const dowTextColor  = isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400';
+                    const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
+                    const dowTextColor  = isToday ? 'text-teal-500' : isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400';
 
                     rows.push(
-                      <tr key={dateStr} className={rowClass}>
+                      <tr key={dateStr} ref={isToday ? todayRef : null} className={rowClass}
+                        style={isToday ? { outline: '2px solid #0d9488', outlineOffset: '-1px' } : {}}>
                         <td className={`border border-gray-200 text-center whitespace-nowrap ${dateTextColor} ${compact ? 'text-xs px-2 py-px' : 'px-2 py-1'}`}>
-                          {formatMonth(dateStr)}
+                          {isToday
+                            ? <><div className="text-[10px] font-bold text-white rounded px-0.5 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>{formatMonth(dateStr)}</>
+                            : formatMonth(dateStr)
+                          }
                         </td>
                         <td className={`border border-gray-200 text-center whitespace-nowrap font-medium ${dateTextColor} ${compact ? 'text-xs px-2 py-px' : 'px-2 py-1'}`}>
                           {formatDay(dateStr)}
