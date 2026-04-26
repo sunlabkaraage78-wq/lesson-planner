@@ -330,7 +330,28 @@ export default function ProgressView() {
     return progressRecords[key]?.[date] || { content: '', note: '' };
   }
   function handleSave(classId, date, record) {
-    dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: activeSubjectId, classId, date, record });
+    const key = `${activeSubjectId}_${classId}`;
+    const oldRecord = progressRecords[key]?.[date] || {};
+
+    // 新たにずらしフラグを立て、かつ既存コンテンツがある場合 → 連鎖して後続コマへ押し出す
+    const changes = [{ date, record }];
+    if (record.shifted && !oldRecord.shifted && oldRecord.content) {
+      const lessonDates = allYearDates.filter(d => classDateSets[classId]?.has(d));
+      const dateIdx = lessonDates.indexOf(date);
+      let displaced = { content: oldRecord.content, note: oldRecord.note || '' };
+      for (let i = dateIdx + 1; i < lessonDates.length && displaced; i++) {
+        const nextDate = lessonDates[i];
+        const nextRec = progressRecords[key]?.[nextDate] || {};
+        if (nextRec.shifted) continue; // ずらし済みコマはスキップ
+        const saved = displaced;
+        displaced = nextRec.content ? { content: nextRec.content, note: nextRec.note || '' } : null;
+        changes.push({ date: nextDate, record: { content: saved.content, note: saved.note, shifted: false } });
+      }
+    }
+
+    for (const c of changes) {
+      dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: activeSubjectId, classId, date: c.date, record: c.record });
+    }
   }
 
   function handleAutoFillApply(records) {
