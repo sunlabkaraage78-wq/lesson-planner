@@ -5,3 +5,7 @@ main = "worker.js"
 [assets]
 directory = "./dist"
 binding = "ASSETS"
+
+[[kv_namespaces]]
+binding = "LESSON_DATA"
+id = "26de1018a8944fd4bf1b5b059b78a01d"

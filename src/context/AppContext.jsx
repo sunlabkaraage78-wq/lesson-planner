@@ -1,4 +1,24 @@
-import { createContext, useContext, useReducer, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef } from 'react';
+
+const API_BASE = '/api/data';
+
+async function fetchFromKV(year) {
+  try {
+    const res = await fetch(`${API_BASE}/${year}`);
+    if (!res.ok) return null;
+    return await res.json();
+  } catch { return null; }
+}
+
+async function saveToKV(state) {
+  try {
+    await fetch(`${API_BASE}/${state.schoolYear}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+    });
+  } catch {}
+}
 
 const STORAGE_KEY_PREFIX = 'lessonPlanner_';
 
@@ -206,9 +226,23 @@ export function AppProvider({ children }) {
     loadFromStorage(new Date().getFullYear())
   );
   const [past, setPast] = useState([]);
+  const saveTimer = useRef(null);
 
+  // 起動時にKVから最新データを取得してマージ
+  useEffect(() => {
+    fetchFromKV(state.schoolYear).then(kvData => {
+      if (kvData && kvData.schoolYear) {
+        dispatch({ type: 'IMPORT_STATE', data: kvData });
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // state変化時: localStorage + KVに保存（KVは1秒デバウンス）
   useEffect(() => {
     saveToStorage(state);
+    if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => saveToKV(state), 1000);
   }, [state]);
 
   const dispatchWithHistory = useCallback((action) => {
