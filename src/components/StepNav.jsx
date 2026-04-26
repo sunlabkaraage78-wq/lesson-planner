@@ -1,5 +1,6 @@
+import { useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, Undo2 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 
 const STEPS = [
@@ -12,9 +13,22 @@ const STEPS = [
 const YEARS = Array.from({ length: 10 }, (_, i) => new Date().getFullYear() - 2 + i);
 
 export default function StepNav() {
-  const { state, dispatch } = useApp();
+  const { state, dispatch, undo, canUndo } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
+
+  useEffect(() => {
+    function handleKeyDown(e) {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        e.preventDefault();
+        undo();
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [undo]);
   const currentStep = STEPS.find(s => s.path === location.pathname)?.step ?? 1;
 
   function handleYearChange(year) {
@@ -74,6 +88,13 @@ export default function StepNav() {
                 {YEARS.map(y => <option key={y} value={y} style={{ color: '#1e293b' }}>{y}年度</option>)}
               </select>
             </div>
+            <button
+              onClick={undo}
+              disabled={!canUndo}
+              title="操作を戻す (Ctrl+Z)"
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/20 transition-colors disabled:opacity-30 disabled:cursor-not-allowed">
+              <Undo2 size={13} /> 元に戻す
+            </button>
             <button onClick={handleExport}
               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-white/10 hover:bg-white/20 transition-colors">
               <Download size={13} /> エクスポート

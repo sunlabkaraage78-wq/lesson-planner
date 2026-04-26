@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useEffect } from 'react';
+import { createContext, useContext, useReducer, useEffect, useState, useCallback } from 'react';
 
 const STORAGE_KEY_PREFIX = 'lessonPlanner_';
 
@@ -197,17 +197,36 @@ function removeClassFromTimetable(timetable, classId) {
 
 const AppContext = createContext(null);
 
+const MAX_HISTORY = 30;
+// 年度切り替えは履歴対象外（全状態が入れ替わるため）
+const NON_UNDOABLE = new Set(['SET_YEAR']);
+
 export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, null, () =>
     loadFromStorage(new Date().getFullYear())
   );
+  const [past, setPast] = useState([]);
 
   useEffect(() => {
     saveToStorage(state);
   }, [state]);
 
+  const dispatchWithHistory = useCallback((action) => {
+    if (!NON_UNDOABLE.has(action.type)) {
+      setPast(prev => [...prev.slice(-(MAX_HISTORY - 1)), state]);
+    }
+    dispatch(action);
+  }, [state]);
+
+  const undo = useCallback(() => {
+    if (past.length === 0) return;
+    const prev = past[past.length - 1];
+    setPast(p => p.slice(0, -1));
+    dispatch({ type: 'IMPORT_STATE', data: prev });
+  }, [past]);
+
   return (
-    <AppContext.Provider value={{ state, dispatch }}>
+    <AppContext.Provider value={{ state, dispatch: dispatchWithHistory, undo, canUndo: past.length > 0 }}>
       {children}
     </AppContext.Provider>
   );
