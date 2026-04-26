@@ -272,9 +272,13 @@ export default function ProgressView() {
   const [selectedSubjectId, setSelectedSubjectId] = useState(null);
   const [selectedTermIdx, setSelectedTermIdx] = useState(0);
   const [showAutoFill, setShowAutoFill] = useState(false);
+  const [mobileClassId, setMobileClassId] = useState(null);
 
   const validTerms = useMemo(() => (terms || []).filter(t => t.start && t.end), [terms]);
   const activeSubjectId = selectedSubjectId ?? subjects[0]?.id ?? null;
+
+  // 科目切替時にモバイルクラス選択をリセット
+  useEffect(() => { setMobileClassId(null); }, [activeSubjectId]);
   const holidays = useMemo(() => getSchoolYearHolidays(schoolYear), [schoolYear]);
 
   const linkedClasses = useMemo(() => {
@@ -282,6 +286,8 @@ export default function ProgressView() {
     const linkedIds = new Set(subjectClassLinks.filter(l => l.subjectId === activeSubjectId).map(l => l.classId));
     return classes.filter(c => linkedIds.has(c.id));
   }, [activeSubjectId, subjectClassLinks, classes]);
+
+  const activeMobileClassId = mobileClassId ?? linkedClasses[0]?.id ?? null;
 
   const classDateSets = useMemo(() => {
     if (!activeSubjectId) return {};
@@ -463,10 +469,72 @@ export default function ProgressView() {
       )}
 
       {/* テーブル */}
-      <div className="flex-1 overflow-auto p-4">
+      <div className="flex-1 overflow-auto">
         {linkedClasses.length === 0 ? (
           <div className="text-gray-400 text-sm p-4">この科目に紐づくクラスがありません。</div>
         ) : (
+          <>
+          {/* ===== モバイル: カードリスト ===== */}
+          <div className="sm:hidden">
+            {/* クラス選択タブ（複数クラスの場合のみ） */}
+            {linkedClasses.length > 1 && (
+              <div className="bg-white border-b px-4 py-2 flex gap-1 overflow-x-auto">
+                {linkedClasses.map(cls => (
+                  <button
+                    key={cls.id}
+                    onClick={() => setMobileClassId(cls.id)}
+                    className={`px-3 py-1 text-xs rounded-full whitespace-nowrap border transition-colors ${
+                      activeMobileClassId === cls.id
+                        ? 'bg-blue-500 text-white border-blue-500'
+                        : 'bg-white text-gray-600 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    {cls.displayName || `${cls.grade}年${cls.group}組`}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* 授業日カード一覧 */}
+            <div className="p-3 space-y-1">
+              {activeMobileClassId && filteredAllDates
+                .filter(dateStr => classDateSets[activeMobileClassId]?.has(dateStr))
+                .map(dateStr => {
+                  const lessonNum = classCounters[activeMobileClassId]?.[dateStr];
+                  const record = getRecord(activeMobileClassId, dateStr);
+                  const dow = new Date(dateStr).getDay();
+                  const isSun = dow === 0, isSat = dow === 6;
+                  const isHoliday = !!holidays[dateStr];
+                  const dateTextColor = isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
+                  return (
+                    <div key={dateStr} className={`bg-white rounded-lg border p-2 ${record.shifted ? 'border-red-300' : 'border-gray-200'}`}>
+                      <div className="flex gap-2 items-start">
+                        <div className={`shrink-0 w-12 text-xs text-center ${dateTextColor}`}>
+                          <div className="font-medium">{formatMonth(dateStr)}/{formatDay(dateStr)}</div>
+                          <div className="opacity-60">{formatWeek(dateStr)}曜</div>
+                        </div>
+                        <div className="shrink-0 text-xs text-gray-400 w-5 text-center pt-0.5">{lessonNum}</div>
+                        <div className="flex-1 min-w-0">
+                          <ContentCell
+                            value={record.content}
+                            note={record.note}
+                            shifted={record.shifted}
+                            onSave={rec => handleSave(activeMobileClassId, dateStr, rec)}
+                            onAdvance={() => handleAdvance(activeMobileClassId, dateStr)}
+                          />
+                          {record.note && record.note.trim() && (
+                            <div className="text-xs text-amber-700 bg-amber-100 rounded px-1 py-0.5 mt-0.5 whitespace-pre-wrap">{record.note}</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              }
+            </div>
+          </div>
+
+          {/* ===== デスクトップ: テーブル ===== */}
+          <div className="hidden sm:block p-4">
           <div className="overflow-x-auto">
             <table className="border-collapse text-sm bg-white shadow-sm rounded-lg overflow-hidden w-full">
               <thead className="sticky top-0 z-10">
@@ -587,6 +655,8 @@ export default function ProgressView() {
               </tbody>
             </table>
           </div>
+          </div>
+          </>
         )}
       </div>
 
