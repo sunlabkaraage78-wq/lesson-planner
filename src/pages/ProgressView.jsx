@@ -278,7 +278,8 @@ export default function ProgressView() {
   const todayStr = useMemo(() => toDateStr(new Date()), []);
 
   const validTerms = useMemo(() => (terms || []).filter(t => t.start && t.end), [terms]);
-  const activeSubjectId = selectedSubjectId ?? subjects[0]?.id ?? null;
+  const activeSubjectId = selectedSubjectId === '__all__' ? '__all__' : (selectedSubjectId ?? subjects[0]?.id ?? null);
+  const isAllMode = activeSubjectId === '__all__';
 
   // 科目切替時にモバイルクラス選択をリセット
   useEffect(() => { setMobileClassId(null); }, [activeSubjectId]);
@@ -292,15 +293,15 @@ export default function ProgressView() {
   const holidays = useMemo(() => getSchoolYearHolidays(schoolYear), [schoolYear]);
 
   const linkedClasses = useMemo(() => {
-    if (!activeSubjectId) return [];
+    if (!activeSubjectId || isAllMode) return [];
     const linkedIds = new Set(subjectClassLinks.filter(l => l.subjectId === activeSubjectId).map(l => l.classId));
     return classes.filter(c => linkedIds.has(c.id));
-  }, [activeSubjectId, subjectClassLinks, classes]);
+  }, [activeSubjectId, isAllMode, subjectClassLinks, classes]);
 
   const activeMobileClassId = mobileClassId ?? linkedClasses[0]?.id ?? null;
 
   const classDateSets = useMemo(() => {
-    if (!activeSubjectId) return {};
+    if (!activeSubjectId || isAllMode) return {};
     const result = {};
     for (const cls of linkedClasses) {
       const dates = generateLessonDates({
@@ -310,7 +311,28 @@ export default function ProgressView() {
       result[cls.id] = new Set(dates);
     }
     return result;
-  }, [activeSubjectId, linkedClasses, schoolYear, timetable, events, holidays, terms, periodsPerDay]);
+  }, [activeSubjectId, isAllMode, linkedClasses, schoolYear, timetable, events, holidays, terms, periodsPerDay]);
+
+  // 全授業モード用：全科目×クラスの授業日を収集
+  const allLessonsData = useMemo(() => {
+    if (!isAllMode) return [];
+    const rows = [];
+    for (const subject of subjects) {
+      const linkedIds = new Set(subjectClassLinks.filter(l => l.subjectId === subject.id).map(l => l.classId));
+      const subjectClasses = classes.filter(c => linkedIds.has(c.id));
+      for (const cls of subjectClasses) {
+        const dates = generateLessonDates({
+          subjectId: subject.id, classId: cls.id, schoolYear,
+          timetable, events, holidays, terms, periodsPerDay, classes,
+        });
+        dates.forEach((date, idx) => {
+          rows.push({ date, subject, cls, lessonNum: idx + 1 });
+        });
+      }
+    }
+    rows.sort((a, b) => a.date.localeCompare(b.date) || a.subject.name.localeCompare(b.subject.name));
+    return rows;
+  }, [isAllMode, subjects, subjectClassLinks, classes, schoolYear, timetable, events, holidays, terms, periodsPerDay]);
 
   const allYearDates = useMemo(() => generateAllDates(schoolYear), [schoolYear]);
 
@@ -438,6 +460,15 @@ export default function ProgressView() {
       {/* 科目タブ */}
       <div className="bg-white border-b px-4 flex items-center justify-between overflow-x-auto">
         <div className="flex gap-0">
+          {/* 全授業タブ */}
+          <button
+            onClick={() => { setSelectedSubjectId('__all__'); setSelectedTermIdx(0); setShowAutoFill(false); }}
+            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              isAllMode ? 'border-gray-700 text-gray-800' : 'border-transparent text-gray-400 hover:text-gray-600 hover:border-gray-300'
+            }`}
+          >
+            全授業
+          </button>
           {subjects.map(s => (
             <button
               key={s.id}
@@ -451,7 +482,7 @@ export default function ProgressView() {
           ))}
         </div>
         {/* 自動入力ボタン */}
-        {linkedClasses.length > 0 && (
+        {!isAllMode && linkedClasses.length > 0 && (
           <button
             onClick={() => setShowAutoFill(true)}
             className="shrink-0 ml-4 px-3 py-1.5 text-xs rounded-lg border font-medium transition-colors"
@@ -478,8 +509,120 @@ export default function ProgressView() {
         </div>
       )}
 
-      {/* テーブル */}
-      <div className="flex-1 overflow-auto">
+      {/* ===== 全授業ビュー ===== */}
+      {isAllMode && (
+        <div className="flex-1 overflow-auto">
+          {allLessonsData.length === 0 ? (
+            <div className="text-gray-400 text-sm p-4">授業日が見つかりません。時間割・クラス・学期を設定してください。</div>
+          ) : (() => {
+            const filtered = allLessonsData.filter(row => {
+              if (selectedTermIdx === -1 || validTerms.length === 0) return true;
+              const term = validTerms[selectedTermIdx];
+              return term && row.date >= term.start && row.date <= term.end;
+            });
+            return (
+              <>
+              {/* モバイル: カード */}
+              <div className="sm:hidden p-3 space-y-1">
+                {filtered.map((row, i) => {
+                  const { date, subject, cls, lessonNum } = row;
+                  const key = `${subject.id}_${cls.id}`;
+                  const record = progressRecords[key]?.[date] || { content: '', note: '' };
+                  const dow = new Date(date).getDay();
+                  const isSun = dow === 0, isSat = dow === 6;
+                  const isHoliday = !!holidays[date];
+                  const isToday = date === todayStr;
+                  const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
+                  return (
+                    <div key={`${date}_${subject.id}_${cls.id}`}
+                      ref={isToday && i === filtered.findIndex(r => r.date === todayStr) ? todayRef : null}
+                      className={`rounded-lg border p-2 ${isToday ? 'border-teal-400 bg-teal-50 shadow-sm' : record.shifted ? 'bg-white border-red-300' : 'bg-white border-gray-200'}`}>
+                      <div className="flex gap-2 items-start">
+                        <div className={`shrink-0 w-12 text-xs text-center ${dateTextColor}`}>
+                          {isToday && <div className="text-[10px] font-bold text-white rounded px-1 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>}
+                          <div className="font-medium">{formatMonth(date)}/{formatDay(date)}</div>
+                          <div className="opacity-60">{formatWeek(date)}曜</div>
+                        </div>
+                        <div className="shrink-0 w-5 text-xs text-gray-400 text-center pt-0.5">{lessonNum}</div>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[10px] text-gray-400 mb-0.5">{subject.name}｜{cls.displayName}</div>
+                          <ContentCell
+                            value={record.content} note={record.note} shifted={record.shifted}
+                            onSave={rec => dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: subject.id, classId: cls.id, date, record: rec })}
+                            onAdvance={null}
+                          />
+                          {record.note && record.note.trim() && (
+                            <div className="text-xs text-amber-700 bg-amber-100 rounded px-1 py-0.5 mt-0.5 whitespace-pre-wrap">{record.note}</div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {/* デスクトップ: テーブル */}
+              <div className="hidden sm:block p-4">
+                <div className="overflow-x-auto">
+                  <table className="border-collapse text-sm bg-white shadow-sm rounded-lg overflow-hidden w-full">
+                    <thead className="sticky top-0 z-10">
+                      <tr className="bg-gray-100 text-gray-600 text-xs">
+                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">月</th>
+                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">日</th>
+                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">曜</th>
+                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">科目</th>
+                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">クラス</th>
+                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">回</th>
+                        <th className="border border-gray-200 px-3 py-2 text-center min-w-[220px]">授業内容</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filtered.map((row, i) => {
+                        const { date, subject, cls, lessonNum } = row;
+                        const key = `${subject.id}_${cls.id}`;
+                        const record = progressRecords[key]?.[date] || { content: '', note: '' };
+                        const dow = new Date(date).getDay();
+                        const isSat = dow === 6, isSun = dow === 0;
+                        const isHoliday = !!holidays[date];
+                        const isToday = date === todayStr;
+                        const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
+                        const dowTextColor  = isToday ? 'text-teal-500' : isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400';
+                        const rowBg = isToday ? 'bg-teal-50' : record.shifted ? 'bg-red-50' : '';
+                        return (
+                          <tr key={`${date}_${subject.id}_${cls.id}`}
+                            ref={isToday && i === filtered.findIndex(r => r.date === todayStr) ? todayRef : null}
+                            className={rowBg}
+                            style={isToday ? { outline: '2px solid #0d9488', outlineOffset: '-1px' } : {}}>
+                            <td className={`border border-gray-200 text-center px-2 py-1 whitespace-nowrap ${dateTextColor}`}>
+                              {isToday ? <><div className="text-[10px] font-bold text-white rounded px-0.5 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>{formatMonth(date)}</> : formatMonth(date)}
+                            </td>
+                            <td className={`border border-gray-200 text-center px-2 py-1 font-medium whitespace-nowrap ${dateTextColor}`}>{formatDay(date)}</td>
+                            <td className={`border border-gray-200 text-center px-2 py-1 whitespace-nowrap ${dowTextColor}`}>{formatWeek(date)}</td>
+                            <td className="border border-gray-200 px-2 py-1 text-xs whitespace-nowrap text-gray-700">{subject.name}</td>
+                            <td className="border border-gray-200 px-2 py-1 text-xs whitespace-nowrap text-gray-600">{cls.displayName}</td>
+                            <td className="border border-gray-200 px-2 py-1 text-center text-xs text-gray-400">{lessonNum}</td>
+                            <td className="border border-gray-200 px-1 py-0.5 align-top">
+                              <ContentCell value={record.content} note={record.note} shifted={record.shifted}
+                                onSave={rec => dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: subject.id, classId: cls.id, date, record: rec })}
+                                onAdvance={null} />
+                              {record.note && record.note.trim() && (
+                                <div className="text-xs text-amber-700 bg-amber-100 rounded px-1 py-0.5 mt-0.5 whitespace-pre-wrap">{record.note}</div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+              </>
+            );
+          })()}
+        </div>
+      )}
+
+      {/* テーブル（個別科目） */}
+      {!isAllMode && <div className="flex-1 overflow-auto">
         {linkedClasses.length === 0 ? (
           <div className="text-gray-400 text-sm p-4">この科目に紐づくクラスがありません。</div>
         ) : (
@@ -759,7 +902,7 @@ export default function ProgressView() {
           </div>
           </>
         )}
-      </div>
+      </div>}
 
       {showAutoFill && (
         <AutoFillModal
