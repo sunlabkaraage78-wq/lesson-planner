@@ -639,6 +639,99 @@ function MonthCalendar({ year, month, events, holidays, timetable, onDayClick, o
   );
 }
 
+// ---- GridCalendar（カレンダー形式） ----
+function GridCalendar({ year, month, events, holidays, onDayClick, onEventClick }) {
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const firstDow = new Date(year, month, 1).getDay(); // 0=日
+  const today = new Date();
+  const todayDs = dateStr(today.getFullYear(), today.getMonth(), today.getDate());
+
+  const totalCells = Math.ceil((firstDow + daysInMonth) / 7) * 7;
+  const cells = Array.from({ length: totalCells }, (_, i) => {
+    const day = i - firstDow + 1;
+    return (day < 1 || day > daysInMonth) ? null : day;
+  });
+
+  const DOW_HEADERS = ['日', '月', '火', '水', '木', '金', '土'];
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      {/* 曜日ヘッダー */}
+      <div className="grid grid-cols-7 border-b border-slate-100">
+        {DOW_HEADERS.map((d, i) => (
+          <div key={d} className={`text-center text-xs font-semibold py-2 ${
+            i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-slate-500'
+          }`}>{d}</div>
+        ))}
+      </div>
+      {/* 日付グリッド */}
+      <div className="grid grid-cols-7" style={{ gridAutoRows: '1fr' }}>
+        {cells.map((day, i) => {
+          if (!day) return (
+            <div key={`e${i}`} className="min-h-[60px] sm:min-h-[80px] bg-slate-50/60 border-r border-b border-slate-100" />
+          );
+          const ds = dateStr(year, month, day);
+          const dow = i % 7;
+          const isSun = dow === 0, isSat = dow === 6;
+          const holidayName = holidays[ds];
+          const isHoliday = !!holidayName;
+          const isToday = ds === todayDs;
+
+          const dayEvents = events.filter(ev => {
+            if (ev.date) return ev.date === ds;
+            if (ev.dateStart && ev.dateEnd) return ev.dateStart <= ds && ds <= ev.dateEnd;
+            return false;
+          });
+          const hasFullCut = dayEvents.some(ev => ev.type === 'long_vacation' || ev.scheduleImpact === 'full_cut');
+
+          let cellBg = '';
+          if (isSun || isSat) cellBg = 'bg-slate-50';
+          if (isHoliday || hasFullCut) cellBg = 'bg-red-50/60';
+
+          const dateColor = isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-slate-700';
+
+          return (
+            <div
+              key={day}
+              onClick={() => onDayClick(year, month, day)}
+              className={`min-h-[60px] sm:min-h-[80px] p-0.5 sm:p-1 cursor-pointer hover:brightness-95 transition-colors border-r border-b border-slate-100 ${cellBg}`}
+            >
+              <div className="flex justify-center mb-0.5">
+                <span
+                  className={`w-5 h-5 sm:w-6 sm:h-6 flex items-center justify-center rounded-full text-xs font-bold leading-none ${dateColor}`}
+                  style={isToday ? { backgroundColor: '#14b8a6', color: '#fff' } : {}}
+                >
+                  {day}
+                </span>
+              </div>
+              {holidayName && (
+                <div className="text-[8px] sm:text-[9px] text-red-400 text-center leading-tight truncate px-0.5">{holidayName}</div>
+              )}
+              <div className="space-y-px mt-0.5">
+                {dayEvents.map(ev => {
+                  const col = IMPACT_COLORS[ev.scheduleImpact || 'none'] || IMPACT_COLORS.none;
+                  const label = getEventDisplayLabel(ev);
+                  return (
+                    <button
+                      key={ev.id}
+                      onClick={e => { e.stopPropagation(); onEventClick(ev); }}
+                      className="w-full text-left text-[8px] sm:text-[10px] px-0.5 sm:px-1 py-px rounded truncate leading-tight transition-opacity hover:opacity-80 block"
+                      style={{ backgroundColor: col.bg, color: col.color, border: `1px solid ${col.border}` }}
+                      title={label}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---- メインページ ----
 export default function EventCalendar() {
   const { state, dispatch } = useApp();
@@ -650,6 +743,7 @@ export default function EventCalendar() {
   const [forming, setForming] = useState(null);
   const [editingEvent, setEditingEvent] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [viewMode, setViewMode] = useState('calendar'); // 'list' | 'calendar'
 
   const holidays = useMemo(() => getSchoolYearHolidays(schoolYear), [schoolYear]);
 
@@ -707,40 +801,58 @@ export default function EventCalendar() {
       <StepNav />
 
       <main className="max-w-5xl mx-auto px-4 py-6">
-        <div className="flex items-center justify-between mb-4">
+        {/* ナビ＋タブ＋追加ボタン */}
+        <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
           <div className="flex items-center gap-3">
             <button onClick={prevMonth}
               className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors">
               <ChevronLeft size={16} />
             </button>
-            <h2 className="text-lg font-bold text-slate-800 w-36 text-center">{monthName}</h2>
+            <h2 className="text-lg font-bold text-slate-800 w-28 sm:w-36 text-center">{monthName}</h2>
             <button onClick={nextMonth}
               className="p-2 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors">
               <ChevronRight size={16} />
             </button>
           </div>
-          <button
-            onClick={() => { setForming({}); setEditingEvent(null); }}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-white text-sm font-medium"
-            style={{ backgroundColor: '#0d9488' }}
-          >
-            <Plus size={14} /> 行事を追加
-          </button>
+          <div className="flex items-center gap-2">
+            {/* 表示切替タブ */}
+            <div className="flex bg-white border border-slate-200 rounded-lg p-0.5 shadow-sm text-xs font-medium">
+              <button
+                onClick={() => setViewMode('calendar')}
+                className={`px-3 py-1.5 rounded-md transition-all ${viewMode === 'calendar' ? 'text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                style={viewMode === 'calendar' ? { backgroundColor: '#0f1f6e' } : {}}
+              >
+                カレンダー
+              </button>
+              <button
+                onClick={() => setViewMode('list')}
+                className={`px-3 py-1.5 rounded-md transition-all ${viewMode === 'list' ? 'text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                style={viewMode === 'list' ? { backgroundColor: '#0f1f6e' } : {}}
+              >
+                リスト
+              </button>
+            </div>
+            <button
+              onClick={() => { setForming({}); setEditingEvent(null); }}
+              className="flex items-center gap-1.5 px-3 sm:px-4 py-2 rounded-lg text-white text-sm font-medium"
+              style={{ backgroundColor: '#0d9488' }}
+            >
+              <Plus size={14} /> <span className="hidden sm:inline">行事を追加</span><span className="sm:hidden">追加</span>
+            </button>
+          </div>
         </div>
 
-        <div className="flex gap-4 flex-col lg:flex-row">
-          {/* カレンダー */}
-          <div className="flex-1 min-w-0">
-            <MonthCalendar
+        {/* カレンダー形式 */}
+        {viewMode === 'calendar' && (
+          <div>
+            <GridCalendar
               year={viewYear}
               month={viewMonth}
               events={events}
               holidays={holidays}
-              timetable={timetable}
               onDayClick={handleDayClick}
               onEventClick={handleEventClick}
             />
-
             {/* 凡例 */}
             <div className="flex flex-wrap gap-3 mt-3">
               <div className="flex items-center gap-1.5">
@@ -755,84 +867,114 @@ export default function EventCalendar() {
               ))}
             </div>
           </div>
+        )}
 
-          {/* 月の行事リスト */}
-          <div className="lg:w-64 shrink-0">
-            <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">{viewMonth + 1}月の行事</h3>
-              {monthEvents.length === 0 ? (
-                <p className="text-xs text-slate-400 text-center py-4">行事なし</p>
-              ) : (
-                <div className="space-y-2">
-                  {monthEvents.map(ev => {
-                    const col = IMPACT_COLORS[ev.scheduleImpact || 'none'] || IMPACT_COLORS.none;
-                    const typeDef = EVENT_TYPES[ev.type];
-                    let dateLabel = '';
-                    if (ev.date) {
-                      const d = new Date(ev.date + 'T00:00:00');
-                      dateLabel = `${d.getMonth() + 1}/${d.getDate()}(${DAYS_JP[d.getDay()]})`;
-                    } else if (ev.dateStart && ev.dateEnd) {
-                      const ds = new Date(ev.dateStart + 'T00:00:00');
-                      const de = new Date(ev.dateEnd + 'T00:00:00');
-                      dateLabel = `${ds.getMonth() + 1}/${ds.getDate()}〜${de.getMonth() + 1}/${de.getDate()}`;
-                    }
+        {/* リスト形式 */}
+        {viewMode === 'list' && (
+          <div className="flex gap-4 flex-col lg:flex-row">
+            {/* 縦リストカレンダー */}
+            <div className="flex-1 min-w-0">
+              <MonthCalendar
+                year={viewYear}
+                month={viewMonth}
+                events={events}
+                holidays={holidays}
+                timetable={timetable}
+                onDayClick={handleDayClick}
+                onEventClick={handleEventClick}
+              />
+              {/* 凡例 */}
+              <div className="flex flex-wrap gap-3 mt-3">
+                <div className="flex items-center gap-1.5">
+                  <div className="w-3 h-3 rounded border bg-red-50 border-red-200" />
+                  <span className="text-xs text-red-400">祝日</span>
+                </div>
+                {Object.entries(IMPACT_COLORS).map(([key, col]) => (
+                  <div key={key} className="flex items-center gap-1.5">
+                    <div className="w-3 h-3 rounded border" style={{ backgroundColor: col.bg, borderColor: col.border }} />
+                    <span className="text-xs text-slate-500">{col.label}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
 
-                    return (
-                      <div key={ev.id} className="rounded-lg border p-2.5"
-                        style={{ borderColor: col.border, backgroundColor: col.bg }}>
-                        <div className="flex items-start justify-between gap-1">
-                          <div className="min-w-0">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded text-white"
-                                style={{ backgroundColor: col.color }}>
-                                {typeDef?.label}
-                              </span>
-                            </div>
-                            <div className="text-xs font-semibold truncate mt-0.5" style={{ color: col.color }}>
-                              {ev.name}{ev.type === 'day_change' && ev.subDay ? `（${ev.subDay}曜）` : ''}
-                            </div>
-                            <div className="text-xs text-slate-500">{dateLabel}</div>
-                            {ev.scheduleImpact && ev.scheduleImpact !== 'none' && (
-                              <div className="text-[10px] mt-0.5" style={{ color: col.color }}>
-                                {ev.scheduleImpact === 'full_cut' && '1日授業カット'}
-                                {ev.scheduleImpact === 'partial_cut' && (
-                                  ev.cutMode === 'morning' ? '午前カット' :
-                                  ev.cutMode === 'afternoon' ? '午後カット' :
-                                  `${ev.cutPeriods?.join('・')}限カット`
-                                )}
-                                {ev.scheduleImpact === 'day_sub' && `${ev.subDay}曜日課`}
-                                {ev.scheduleImpact === 'day_sub_partial' && `${ev.subPeriods?.join('・')}限 ${ev.subDay}曜日課・残りカット`}
+            {/* 月の行事リスト（サイドバー） */}
+            <div className="lg:w-64 shrink-0">
+              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">{viewMonth + 1}月の行事</h3>
+                {monthEvents.length === 0 ? (
+                  <p className="text-xs text-slate-400 text-center py-4">行事なし</p>
+                ) : (
+                  <div className="space-y-2">
+                    {monthEvents.map(ev => {
+                      const col = IMPACT_COLORS[ev.scheduleImpact || 'none'] || IMPACT_COLORS.none;
+                      const typeDef = EVENT_TYPES[ev.type];
+                      let dateLabel = '';
+                      if (ev.date) {
+                        const d = new Date(ev.date + 'T00:00:00');
+                        dateLabel = `${d.getMonth() + 1}/${d.getDate()}(${DAYS_JP[d.getDay()]})`;
+                      } else if (ev.dateStart && ev.dateEnd) {
+                        const ds = new Date(ev.dateStart + 'T00:00:00');
+                        const de = new Date(ev.dateEnd + 'T00:00:00');
+                        dateLabel = `${ds.getMonth() + 1}/${ds.getDate()}〜${de.getMonth() + 1}/${de.getDate()}`;
+                      }
+                      return (
+                        <div key={ev.id} className="rounded-lg border p-2.5"
+                          style={{ borderColor: col.border, backgroundColor: col.bg }}>
+                          <div className="flex items-start justify-between gap-1">
+                            <div className="min-w-0">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded text-white"
+                                  style={{ backgroundColor: col.color }}>
+                                  {typeDef?.label}
+                                </span>
                               </div>
-                            )}
-                          </div>
-                          <div className="flex gap-1 shrink-0">
-                            <button onClick={() => handleEventClick(ev)}
-                              className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-white/50">
-                              <Pencil size={12} />
-                            </button>
-                            {confirmDeleteId === ev.id ? (
-                              <div className="flex gap-1">
-                                <button onClick={() => handleDelete(ev.id)}
-                                  className="p-1 rounded bg-red-500 text-white"><Check size={12} /></button>
-                                <button onClick={() => setConfirmDeleteId(null)}
-                                  className="p-1 rounded text-slate-400 hover:bg-white/50"><X size={12} /></button>
+                              <div className="text-xs font-semibold truncate mt-0.5" style={{ color: col.color }}>
+                                {ev.name}{ev.type === 'day_change' && ev.subDay ? `（${ev.subDay}曜）` : ''}
                               </div>
-                            ) : (
-                              <button onClick={() => setConfirmDeleteId(ev.id)}
-                                className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-white/50">
-                                <Trash2 size={12} />
+                              <div className="text-xs text-slate-500">{dateLabel}</div>
+                              {ev.scheduleImpact && ev.scheduleImpact !== 'none' && (
+                                <div className="text-[10px] mt-0.5" style={{ color: col.color }}>
+                                  {ev.scheduleImpact === 'full_cut' && '1日授業カット'}
+                                  {ev.scheduleImpact === 'partial_cut' && (
+                                    ev.cutMode === 'morning' ? '午前カット' :
+                                    ev.cutMode === 'afternoon' ? '午後カット' :
+                                    `${ev.cutPeriods?.join('・')}限カット`
+                                  )}
+                                  {ev.scheduleImpact === 'day_sub' && `${ev.subDay}曜日課`}
+                                  {ev.scheduleImpact === 'day_sub_partial' && `${ev.subPeriods?.join('・')}限 ${ev.subDay}曜日課・残りカット`}
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex gap-1 shrink-0">
+                              <button onClick={() => handleEventClick(ev)}
+                                className="p-1 rounded text-slate-400 hover:text-slate-600 hover:bg-white/50">
+                                <Pencil size={12} />
                               </button>
-                            )}
+                              {confirmDeleteId === ev.id ? (
+                                <div className="flex gap-1">
+                                  <button onClick={() => handleDelete(ev.id)}
+                                    className="p-1 rounded bg-red-500 text-white"><Check size={12} /></button>
+                                  <button onClick={() => setConfirmDeleteId(null)}
+                                    className="p-1 rounded text-slate-400 hover:bg-white/50"><X size={12} /></button>
+                                </div>
+                              ) : (
+                                <button onClick={() => setConfirmDeleteId(ev.id)}
+                                  className="p-1 rounded text-slate-400 hover:text-red-500 hover:bg-white/50">
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </main>
 
       {forming !== null && (
