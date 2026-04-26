@@ -1,5 +1,7 @@
 name = "lesson-planner"
 compatibility_date = "2025-01-01"
+main = "worker.js"
 
 [assets]
 directory = "./dist"
+binding = "ASSETS"
