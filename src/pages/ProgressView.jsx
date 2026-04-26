@@ -527,13 +527,13 @@ export default function ProgressView() {
 
       {/* ===== 全授業ビュー ===== */}
       {isAllMode && (
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto" style={{ overflowX: 'auto' }}>
           {allColumns.length === 0 ? (
             <div className="text-gray-400 text-sm p-4">授業日が見つかりません。時間割・クラス・学期を設定してください。</div>
           ) : (() => {
             const filtered = filteredAllDates;
             return (
-              <div className="overflow-x-auto p-2">
+              <div className="p-2">
                 <table className="border-collapse text-sm bg-white shadow-sm rounded-lg overflow-hidden">
                   <thead className="sticky top-0 z-10">
                     {/* 科目行 */}
@@ -559,29 +559,29 @@ export default function ProgressView() {
                   <tbody>
                     {filtered.map(dateStr => {
                       const anyLesson = allColumns.some(({ key }) => allColumnDateSets[key]?.has(dateStr));
-                      if (!anyLesson) return null;
                       const dow = new Date(dateStr).getDay();
-                      const isSat = dow === 6, isSun = dow === 0;
+                      const isSat = dow === 6, isSun = dow === 0, isWeekend = isSat || isSun;
                       const isHoliday = !!holidays[dateStr];
                       const isToday = dateStr === todayStr;
+                      const compact = !anyLesson;
                       const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
                       const dowTextColor  = isToday ? 'text-teal-500' : isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400';
-                      const rowBg = isToday ? 'bg-teal-50' : '';
+                      let rowBg = isToday ? 'bg-teal-50' : isWeekend ? 'bg-gray-100' : isHoliday ? 'bg-red-50/60' : compact ? 'bg-gray-50' : '';
                       return (
                         <tr key={dateStr} ref={isToday ? todayRef : null} className={rowBg}
                           style={isToday ? { outline: '2px solid #0d9488', outlineOffset: '-1px' } : {}}>
-                          <td className={`border border-gray-200 text-center px-1 py-1 whitespace-nowrap text-xs ${dateTextColor}`}>
-                            {isToday && <div className="text-[9px] font-bold text-white rounded px-0.5 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>}
+                          <td className={`border border-gray-200 text-center px-1 whitespace-nowrap ${dateTextColor} ${compact ? 'text-[10px] py-px' : 'text-xs py-1'}`}>
+                            {isToday && !compact && <div className="text-[9px] font-bold text-white rounded px-0.5 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>}
                             {formatMonth(dateStr)}
                           </td>
-                          <td className={`border border-gray-200 text-center px-1 py-1 font-medium whitespace-nowrap text-xs ${dateTextColor}`}>{formatDay(dateStr)}</td>
-                          <td className={`border border-gray-200 text-center px-1 py-1 whitespace-nowrap text-xs ${dowTextColor}`}>{formatWeek(dateStr)}</td>
+                          <td className={`border border-gray-200 text-center px-1 font-medium whitespace-nowrap ${dateTextColor} ${compact ? 'text-[10px] py-px' : 'text-xs py-1'}`}>{formatDay(dateStr)}</td>
+                          <td className={`border border-gray-200 text-center px-1 whitespace-nowrap ${dowTextColor} ${compact ? 'text-[10px] py-px' : 'text-xs py-1'}`}>{formatWeek(dateStr)}</td>
                           {allColumns.map(({ subject, cls, key }) => {
                             const hasLesson = allColumnDateSets[key]?.has(dateStr);
                             const lessonNum = allColumnCounters[key]?.[dateStr];
                             const record = progressRecords[key]?.[dateStr] || { content: '', note: '' };
                             if (!hasLesson) {
-                              return <td key={key} className="border border-gray-200 bg-gray-50" />;
+                              return <td key={key} className={`border border-gray-200 ${isWeekend ? 'bg-gray-100' : isHoliday ? 'bg-red-50/60' : compact ? 'bg-gray-50' : ''}`} />;
                             }
                             return (
                               <td key={key} className="border border-gray-200 px-1 py-0.5 align-top min-w-[100px] max-w-[120px]">
@@ -613,7 +613,7 @@ export default function ProgressView() {
       )}
 
       {/* テーブル（個別科目） */}
-      {!isAllMode && <div className="flex-1 overflow-auto">
+      {!isAllMode && <div className="flex-1 overflow-auto" style={{ overflowX: 'auto' }}>
         {linkedClasses.length === 0 ? (
           <div className="text-gray-400 text-sm p-4">この科目に紐づくクラスがありません。</div>
         ) : (
@@ -649,7 +649,7 @@ export default function ProgressView() {
 
             {mobileClassId === '__all__' ? (
               /* 全クラス: 横スクロールテーブル */
-              <div className="overflow-x-auto p-3">
+              <div className="p-3">
                 <table className="border-collapse text-sm bg-white shadow-sm rounded-lg overflow-hidden">
                   <thead className="sticky top-0 z-10">
                     <tr className="bg-gray-100 text-gray-600 text-xs">
@@ -764,7 +764,6 @@ export default function ProgressView() {
 
           {/* ===== デスクトップ: テーブル ===== */}
           <div className="hidden sm:block p-4">
-          <div className="overflow-x-auto">
             <table className="border-collapse text-sm bg-white shadow-sm rounded-lg overflow-hidden w-full">
               <thead className="sticky top-0 z-10">
                 <tr className="bg-gray-100 text-gray-600 text-xs">
@@ -889,7 +888,6 @@ export default function ProgressView() {
                 })()}
               </tbody>
             </table>
-          </div>
           </div>
           </>
         )}
