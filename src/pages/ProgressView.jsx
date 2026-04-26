@@ -170,7 +170,7 @@ function AutoFillModal({ unitItems, linkedClasses, classDateSets, allYearDates, 
 const SHIFT_PRESETS = ['自習', '問題演習', '補講', 'テスト返却', 'その他'];
 
 // --- インライン編集セル ---
-function ContentCell({ value, note, shifted, onSave }) {
+function ContentCell({ value, note, shifted, onSave, onAdvance }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value || '');
   const [draftNote, setDraftNote] = useState(note || '');
@@ -243,8 +243,18 @@ function ContentCell({ value, note, shifted, onSave }) {
           onChange={e => setDraftShifted(e.target.checked)}
           className="accent-red-500"
         />
-        <span className="text-xs text-red-600">このコマをずらす（単元進行をずらして赤枠表示）</span>
+        <span className="text-xs text-red-600">このコマをずらす（以降の内容を1コマ後ろへ）</span>
       </label>
+      {/* 前倒しボタン */}
+      {onAdvance && (
+        <button
+          type="button"
+          onClick={() => { setEditing(false); onAdvance(); }}
+          className="text-xs px-2 py-1 rounded border border-emerald-400 text-emerald-700 hover:bg-emerald-50 text-left"
+        >
+          ↑ 以降を1コマ前倒し（進度が早いとき）
+        </button>
+      )}
       <div className="flex gap-1 justify-end">
         <button onClick={() => setEditing(false)} className="text-xs px-2 py-0.5 rounded border border-gray-300 hover:bg-gray-100">キャンセル</button>
         <button onClick={save} className="text-xs px-2 py-0.5 rounded bg-blue-500 text-white hover:bg-blue-600">保存</button>
@@ -349,6 +359,33 @@ export default function ProgressView() {
       }
     }
 
+    for (const c of changes) {
+      dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: activeSubjectId, classId, date: c.date, record: c.record });
+    }
+  }
+
+  function handleAdvance(classId, date) {
+    const key = `${activeSubjectId}_${classId}`;
+    const lessonDates = allYearDates.filter(d => classDateSets[classId]?.has(d));
+    const dateIdx = lessonDates.indexOf(date);
+    // 現在のコマの次から、内容を1コマずつ前に引き上げる
+    const changes = [];
+    for (let i = dateIdx + 1; i < lessonDates.length; i++) {
+      const curDate = lessonDates[i];
+      const curRec = progressRecords[key]?.[curDate] || {};
+      if (curRec.shifted) continue;
+      // 次の非ずらしコマの内容を取得
+      let nextContent = '';
+      let nextNote = '';
+      for (let j = i + 1; j < lessonDates.length; j++) {
+        const nextDate = lessonDates[j];
+        const nextRec = progressRecords[key]?.[nextDate] || {};
+        if (!nextRec.shifted) { nextContent = nextRec.content || ''; nextNote = nextRec.note || ''; break; }
+      }
+      changes.push({ date: curDate, record: { content: nextContent, note: nextNote, shifted: false } });
+      // 最後のコマに到達したら終了
+      if (!nextContent) break;
+    }
     for (const c of changes) {
       dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: activeSubjectId, classId, date: c.date, record: c.record });
     }
@@ -533,7 +570,7 @@ export default function ProgressView() {
                               <div className="flex gap-1 items-start">
                                 <span className="flex-none w-6 text-center text-xs text-gray-400 pt-1">{lessonNum}</span>
                                 <div className="flex-1 min-w-0">
-                                  <ContentCell value={record.content} note={record.note} shifted={record.shifted} onSave={rec => handleSave(cls.id, dateStr, rec)} />
+                                  <ContentCell value={record.content} note={record.note} shifted={record.shifted} onSave={rec => handleSave(cls.id, dateStr, rec)} onAdvance={() => handleAdvance(cls.id, dateStr)} />
                                   {record.note && record.note.trim() && (
                                     <div className="text-xs text-amber-700 bg-amber-100 rounded px-1 py-0.5 mt-0.5 whitespace-pre-wrap">{record.note}</div>
                                   )}
