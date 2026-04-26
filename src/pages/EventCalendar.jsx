@@ -493,19 +493,38 @@ function EventForm({ initial, onSave, onClose }) {
   );
 }
 
+// 曜日変更イベントの表示ラベルを生成
+function getEventDisplayLabel(event) {
+  const isDaySub = event.type === 'day_change'
+    || event.scheduleImpact === 'day_sub'
+    || event.scheduleImpact === 'day_sub_partial';
+  if (isDaySub && event.subDay) {
+    const day = event.subDay;
+    if (event.scheduleImpact === 'day_sub_partial' && event.subPeriods?.length > 0) {
+      const sorted = [...event.subPeriods].sort((a, b) => a - b);
+      const min = sorted[0];
+      const max = sorted[sorted.length - 1];
+      return `${min}〜${max}限${day}曜授業`;
+    }
+    return `${day}曜授業`;
+  }
+  return event.name;
+}
+
 // ---- EventBadge ----
 function EventBadge({ event, onClick }) {
   const impact = event.scheduleImpact || 'none';
   const col = IMPACT_COLORS[impact] || IMPACT_COLORS.none;
+  const label = getEventDisplayLabel(event);
 
   return (
     <button
       onClick={onClick}
       className="w-full text-left text-xs px-1.5 py-0.5 rounded truncate leading-tight transition-opacity hover:opacity-80 mt-0.5"
       style={{ backgroundColor: col.bg, color: col.color, border: `1px solid ${col.border}` }}
-      title={event.name}
+      title={label}
     >
-      {event.name}
+      {label}
     </button>
   );
 }
