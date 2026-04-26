@@ -187,7 +187,7 @@ function TimetableCell({ day, period, cell, subjects, classes, subjectClassLinks
   return (
     <button
       onClick={onClick}
-      className="w-full h-full min-h-[56px] rounded-lg border text-xs transition-all hover:opacity-80 hover:shadow-sm flex flex-col items-center justify-center gap-0.5 p-1"
+      className="w-full h-full min-h-[40px] sm:min-h-[56px] rounded-lg border text-xs transition-all hover:opacity-80 hover:shadow-sm flex flex-col items-center justify-center gap-0.5 p-0.5 sm:p-1"
       style={{ backgroundColor: colors.bg, borderColor: colors.border, color: colors.text }}
     >
       {cell?.type === 'lesson' && subject ? (
@@ -254,10 +254,10 @@ export default function TimetableGrid() {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="min-w-[400px]">
+      <div>
+        <div>
           {/* ヘッダー */}
-          <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: `40px repeat(${DAYS.length}, 1fr)` }}>
+          <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: `max(24px, 5vw) repeat(${DAYS.length}, 1fr)` }}>
             <div />
             {DAYS.map(day => (
               <div key={day} className="text-center text-xs font-semibold text-slate-500 py-1">
@@ -277,7 +277,7 @@ export default function TimetableGrid() {
                     <div className="flex-1 border-t-2 border-dashed border-slate-300" />
                   </div>
                 )}
-                <div className="grid gap-1 items-center" style={{ gridTemplateColumns: `40px repeat(${DAYS.length}, 1fr)` }}>
+                <div className="grid gap-1 items-center" style={{ gridTemplateColumns: `max(24px, 5vw) repeat(${DAYS.length}, 1fr)` }}>
                   <div className="text-center text-xs font-bold text-slate-400">{period}限</div>
                   {DAYS.map(day => (
                     <TimetableCell
