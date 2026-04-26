@@ -368,12 +368,12 @@ export default function ProgressView() {
     const key = `${activeSubjectId}_${classId}`;
     const lessonDates = allYearDates.filter(d => classDateSets[classId]?.has(d));
     const dateIdx = lessonDates.indexOf(date);
-    // 現在のコマの次から、内容を1コマずつ前に引き上げる
+    // 現在のコマから、1コマ下の内容を順番に引き上げる
     const changes = [];
-    for (let i = dateIdx + 1; i < lessonDates.length; i++) {
+    for (let i = dateIdx; i < lessonDates.length; i++) {
       const curDate = lessonDates[i];
       const curRec = progressRecords[key]?.[curDate] || {};
-      if (curRec.shifted) continue;
+      if (i > dateIdx && curRec.shifted) continue;
       // 次の非ずらしコマの内容を取得
       let nextContent = '';
       let nextNote = '';
@@ -383,7 +383,7 @@ export default function ProgressView() {
         if (!nextRec.shifted) { nextContent = nextRec.content || ''; nextNote = nextRec.note || ''; break; }
       }
       changes.push({ date: curDate, record: { content: nextContent, note: nextNote, shifted: false } });
-      // 最後のコマに到達したら終了
+      // 空になったら終了
       if (!nextContent) break;
     }
     for (const c of changes) {
