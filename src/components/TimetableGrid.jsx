@@ -4,12 +4,52 @@ import { useApp } from '../context/AppContext';
 
 const DAYS = ['月', '火', '水', '木', '金'];
 
-const CELL_COLORS = {
-  lesson: { bg: '#e0f2fe', border: '#7dd3fc', text: '#0369a1' },
-  meeting: { bg: '#fef9c3', border: '#fde68a', text: '#92400e' },
-  free: { bg: '#f1f5f9', border: '#e2e8f0', text: '#94a3b8' },
-};
+// 科目インデックス → 色ファミリー（赤・青・緑）
+// クラスインデックス → 同ファミリー内で淡→濃
+const SUBJECT_PALETTES = [
+  // 赤系（rose）
+  [
+    { bg: '#ffe4e6', border: '#fda4af', text: '#9f1239' },
+    { bg: '#fecdd3', border: '#fb7185', text: '#881337' },
+    { bg: '#fda4af', border: '#f43f5e', text: '#7f1d1d' },
+    { bg: '#fb7185', border: '#e11d48', text: '#fff1f2' },
+  ],
+  // 青系（sky）
+  [
+    { bg: '#e0f2fe', border: '#7dd3fc', text: '#0c4a6e' },
+    { bg: '#bae6fd', border: '#38bdf8', text: '#0c4a6e' },
+    { bg: '#7dd3fc', border: '#0ea5e9', text: '#0c4a6e' },
+    { bg: '#38bdf8', border: '#0284c7', text: '#fff'    },
+  ],
+  // 緑系（emerald）
+  [
+    { bg: '#d1fae5', border: '#6ee7b7', text: '#064e3b' },
+    { bg: '#a7f3d0', border: '#34d399', text: '#064e3b' },
+    { bg: '#6ee7b7', border: '#10b981', text: '#064e3b' },
+    { bg: '#34d399', border: '#059669', text: '#fff'    },
+  ],
+];
 
+const MEETING_COLOR = { bg: '#fef9c3', border: '#fde68a', text: '#92400e' };
+const FREE_COLOR    = { bg: '#f1f5f9', border: '#e2e8f0', text: '#94a3b8' };
+
+function getCellColor(subjectId, classId, subjects, classes, subjectClassLinks) {
+  const subjectIdx = subjects.findIndex(s => s.id === subjectId);
+  if (subjectIdx < 0) return SUBJECT_PALETTES[0][0];
+
+  const palette = SUBJECT_PALETTES[subjectIdx % SUBJECT_PALETTES.length];
+
+  // このsubjectに紐づくクラスをglobal classes順で並べる
+  const linkedIds = new Set(
+    subjectClassLinks.filter(l => l.subjectId === subjectId).map(l => l.classId)
+  );
+  const linkedClasses = classes.filter(c => linkedIds.has(c.id));
+  const classIdx = linkedClasses.findIndex(c => c.id === classId);
+
+  return palette[Math.max(classIdx, 0) % palette.length];
+}
+
+// ---- CellEditor ----
 function CellEditor({ day, period, cell, subjects, classes, subjectClassLinks, onSave, onClose }) {
   const [type, setType] = useState(cell?.type || 'free');
   const [subjectId, setSubjectId] = useState(cell?.subjectId || '');
@@ -130,10 +170,19 @@ function CellEditor({ day, period, cell, subjects, classes, subjectClassLinks, o
   );
 }
 
-function TimetableCell({ day, period, cell, subjects, classes, onClick }) {
+// ---- TimetableCell ----
+function TimetableCell({ day, period, cell, subjects, classes, subjectClassLinks, onClick }) {
   const subject = cell?.subjectId ? subjects.find(s => s.id === cell.subjectId) : null;
   const cls = cell?.classId ? classes.find(c => c.id === cell.classId) : null;
-  const colors = CELL_COLORS[cell?.type || 'free'];
+
+  let colors;
+  if (cell?.type === 'lesson' && cell.subjectId) {
+    colors = getCellColor(cell.subjectId, cell.classId, subjects, classes, subjectClassLinks);
+  } else if (cell?.type === 'meeting') {
+    colors = MEETING_COLOR;
+  } else {
+    colors = FREE_COLOR;
+  }
 
   return (
     <button
@@ -144,7 +193,7 @@ function TimetableCell({ day, period, cell, subjects, classes, onClick }) {
       {cell?.type === 'lesson' && subject ? (
         <>
           <span className="font-semibold leading-tight text-center">{subject.name}</span>
-          {cls && <span className="opacity-75">{cls.displayName}</span>}
+          {cls && <span className="opacity-80 leading-tight">{cls.displayName}</span>}
         </>
       ) : cell?.type === 'meeting' ? (
         <span className="font-medium leading-tight text-center px-0.5">{cell.name}</span>
@@ -155,10 +204,11 @@ function TimetableCell({ day, period, cell, subjects, classes, onClick }) {
   );
 }
 
+// ---- メイン ----
 export default function TimetableGrid() {
   const { state, dispatch } = useApp();
   const { timetable, periodsPerDay, subjects, classes, subjectClassLinks } = state;
-  const [editing, setEditing] = useState(null); // { day, period }
+  const [editing, setEditing] = useState(null);
 
   const periods = Array.from({ length: periodsPerDay }, (_, i) => i + 1);
 
@@ -175,6 +225,16 @@ export default function TimetableGrid() {
     const n = Math.max(1, Math.min(8, Number(val)));
     dispatch({ type: 'SET_PERIODS_PER_DAY', value: n });
   }
+
+  // 凡例：科目ごとに紐づくクラスの色スウォッチを生成
+  const legendItems = subjects.map((subject, sIdx) => {
+    const palette = SUBJECT_PALETTES[sIdx % SUBJECT_PALETTES.length];
+    const linkedIds = new Set(
+      subjectClassLinks.filter(l => l.subjectId === subject.id).map(l => l.classId)
+    );
+    const linkedClasses = classes.filter(c => linkedIds.has(c.id));
+    return { subject, palette, linkedClasses };
+  });
 
   return (
     <div>
@@ -196,7 +256,7 @@ export default function TimetableGrid() {
 
       <div className="overflow-x-auto">
         <div className="min-w-[400px]">
-          {/* header */}
+          {/* ヘッダー */}
           <div className="grid gap-1 mb-1" style={{ gridTemplateColumns: `40px repeat(${DAYS.length}, 1fr)` }}>
             <div />
             {DAYS.map(day => (
@@ -206,7 +266,7 @@ export default function TimetableGrid() {
             ))}
           </div>
 
-          {/* rows */}
+          {/* 時限行 */}
           <div className="space-y-1">
             {periods.map(period => (
               <div key={period}>
@@ -218,34 +278,61 @@ export default function TimetableGrid() {
                   </div>
                 )}
                 <div className="grid gap-1 items-center" style={{ gridTemplateColumns: `40px repeat(${DAYS.length}, 1fr)` }}>
-                <div className="text-center text-xs font-bold text-slate-400">{period}限</div>
-                {DAYS.map(day => (
-                  <TimetableCell
-                    key={day}
-                    day={day}
-                    period={period}
-                    cell={getCell(day, period)}
-                    subjects={subjects}
-                    classes={classes}
-                    onClick={() => setEditing({ day, period })}
-                  />
-                ))}
-              </div>
+                  <div className="text-center text-xs font-bold text-slate-400">{period}限</div>
+                  {DAYS.map(day => (
+                    <TimetableCell
+                      key={day}
+                      day={day}
+                      period={period}
+                      cell={getCell(day, period)}
+                      subjects={subjects}
+                      classes={classes}
+                      subjectClassLinks={subjectClassLinks}
+                      onClick={() => setEditing({ day, period })}
+                    />
+                  ))}
+                </div>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* legend */}
-      <div className="flex flex-wrap gap-3 mt-3">
-        {Object.entries({ lesson: '授業', meeting: '会議・公務', free: '空きコマ' }).map(([type, label]) => (
-          <div key={type} className="flex items-center gap-1.5">
-            <div className="w-3 h-3 rounded border" style={{ backgroundColor: CELL_COLORS[type].bg, borderColor: CELL_COLORS[type].border }} />
-            <span className="text-xs text-slate-500">{label}</span>
+      {/* 凡例 */}
+      <div className="mt-4 space-y-2">
+        {legendItems.map(({ subject, palette, linkedClasses }) => (
+          <div key={subject.id} className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-slate-600 w-20 shrink-0">{subject.name}</span>
+            {linkedClasses.length === 0 ? (
+              <span className="text-xs text-slate-400">（クラス未設定）</span>
+            ) : (
+              linkedClasses.map((cls, cIdx) => {
+                const color = palette[cIdx % palette.length];
+                return (
+                  <div key={cls.id} className="flex items-center gap-1">
+                    <div
+                      className="w-4 h-4 rounded border"
+                      style={{ backgroundColor: color.bg, borderColor: color.border }}
+                    />
+                    <span className="text-xs text-slate-500">{cls.displayName}</span>
+                  </div>
+                );
+              })
+            )}
           </div>
         ))}
-        <span className="text-xs text-slate-400 ml-auto">※ セルをクリックして編集</span>
+        {/* 固定凡例 */}
+        <div className="flex gap-4 pt-1 border-t border-slate-100">
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded border" style={{ backgroundColor: MEETING_COLOR.bg, borderColor: MEETING_COLOR.border }} />
+            <span className="text-xs text-slate-500">会議・公務</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <div className="w-4 h-4 rounded border" style={{ backgroundColor: FREE_COLOR.bg, borderColor: FREE_COLOR.border }} />
+            <span className="text-xs text-slate-500">空きコマ</span>
+          </div>
+          <span className="text-xs text-slate-400 ml-auto">※ セルをクリックして編集</span>
+        </div>
       </div>
 
       {editing && (

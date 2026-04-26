@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Save, CheckCircle } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { GRADE_SYSTEMS } from '../context/AppContext';
 import TimetableGrid from '../components/TimetableGrid';
 import SubjectManager from '../components/SubjectManager';
 import ClassManager from '../components/ClassManager';
@@ -14,9 +15,11 @@ const TABS = [
 ];
 
 export default function YearSetup() {
-  const { state } = useApp();
+  const { state, dispatch } = useApp();
   const [activeTab, setActiveTab] = useState('timetable');
   const [saved, setSaved] = useState(false);
+
+  const gradeSystem = state.gradeSystem || '3';
 
   function handleSave() {
     setSaved(true);
@@ -29,6 +32,30 @@ export default function YearSetup() {
 
       {/* main content */}
       <main className="max-w-5xl mx-auto px-4 py-6">
+        {/* 学年制設定 */}
+        <div className="mb-4 bg-white rounded-xl border border-slate-200 shadow-sm p-4">
+          <p className="text-xs font-semibold text-slate-500 mb-2">学年制</p>
+          <div className="flex flex-wrap gap-2">
+            {Object.entries(GRADE_SYSTEMS).map(([key, gs]) => (
+              <button
+                key={key}
+                onClick={() => dispatch({ type: 'SET_GRADE_SYSTEM', gradeSystem: key })}
+                className={`px-4 py-2 rounded-lg border text-sm font-medium transition-colors ${
+                  gradeSystem === key
+                    ? 'text-white border-transparent'
+                    : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                }`}
+                style={gradeSystem === key ? { backgroundColor: '#0f1f6e' } : {}}
+              >
+                {gs.label}
+              </button>
+            ))}
+          </div>
+          <p className="text-xs text-slate-400 mt-2">
+            選択中の学年: {GRADE_SYSTEMS[gradeSystem].grades.join('・')}年生
+          </p>
+        </div>
+
         {/* tabs */}
         <div className="flex gap-1 mb-6 bg-white rounded-xl p-1 shadow-sm border border-slate-200 overflow-x-auto">
           {TABS.map(tab => (

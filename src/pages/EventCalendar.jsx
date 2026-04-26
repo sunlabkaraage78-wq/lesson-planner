@@ -24,6 +24,7 @@ export const IMPACT_COLORS = {
   partial_cut:     { color: '#f97316', bg: '#ffedd5', border: '#fdba74', label: '部分授業カット' },
   day_sub:         { color: '#3b82f6', bg: '#dbeafe', border: '#93c5fd', label: '曜日変更' },
   day_sub_partial: { color: '#8b5cf6', bg: '#ede9fe', border: '#c4b5fd', label: '曜日変更＋部分指定' },
+  grade_specific:  { color: '#0891b2', bg: '#cffafe', border: '#67e8f9', label: '学年別指定' },
   none:            { color: '#64748b', bg: '#f1f5f9', border: '#cbd5e1', label: 'なし（通常）' },
 };
 const WEEKDAYS = ['月', '火', '水', '木', '金'];
@@ -33,6 +34,7 @@ const SCHEDULE_IMPACTS = [
   { value: 'partial_cut',     label: '部分授業カット' },
   { value: 'day_sub',         label: '曜日変更' },
   { value: 'day_sub_partial', label: '曜日変更＋部分指定' },
+  { value: 'grade_specific',  label: '学年別指定' },
   { value: 'none',            label: 'なし（通常）' },
 ];
 
@@ -49,8 +51,11 @@ function dateStr(year, month, day) {
 // ---- EventForm モーダル ----
 function EventForm({ initial, onSave, onClose }) {
   const { state } = useApp();
-  const { periodsPerDay = 7 } = state;
+  const { periodsPerDay = 7, classes = [] } = state;
   const allPeriods = Array.from({ length: periodsPerDay }, (_, i) => i + 1);
+
+  // 登録済みクラスから学年一覧を取得
+  const uniqueGrades = [...new Set(classes.map(c => String(c.grade)).filter(Boolean))].sort();
 
   const defaultType = initial?.type || 'school_event';
   const defaultSubType = initial?.subType || '始業式';
@@ -69,6 +74,15 @@ function EventForm({ initial, onSave, onClose }) {
   const [cutPeriods, setCutPeriods] = useState(initial?.cutPeriods || []);
   const [subDay, setSubDay] = useState(initial?.subDay || '月');
   const [subPeriods, setSubPeriods] = useState(initial?.subPeriods || []);
+  // 学年別指定: { [grade]: { mode, cutMode, cutPeriods } }
+  const [gradeImpacts, setGradeImpacts] = useState(initial?.gradeImpacts || {});
+
+  function updateGradeImpact(grade, patch) {
+    setGradeImpacts(prev => ({
+      ...prev,
+      [grade]: { ...(prev[grade] || { mode: 'none' }), ...patch },
+    }));
+  }
 
   function togglePeriod(arr, setArr, p) {
     setArr(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p]);
@@ -113,6 +127,7 @@ function EventForm({ initial, onSave, onClose }) {
       ...(scheduleImpact === 'partial_cut' ? { cutMode, ...(cutMode === 'custom' ? { cutPeriods: [...cutPeriods].sort((a,b)=>a-b) } : {}) } : {}),
       ...((scheduleImpact === 'day_sub' || scheduleImpact === 'day_sub_partial') ? { subDay } : {}),
       ...(scheduleImpact === 'day_sub_partial' ? { subPeriods: [...subPeriods].sort((a,b)=>a-b) } : {}),
+      ...(scheduleImpact === 'grade_specific' ? { gradeImpacts } : {}),
     };
     onSave(event);
   }
@@ -326,6 +341,93 @@ function EventForm({ initial, onSave, onClose }) {
                 </div>
               )}
 
+              {/* 学年別指定 の詳細 */}
+              {scheduleImpact === 'grade_specific' && (
+                <div className="mt-3 space-y-3">
+                  {uniqueGrades.length === 0 ? (
+                    <p className="text-xs text-amber-600">クラスが登録されていません。ステップ1でクラスを登録してください。</p>
+                  ) : (
+                    uniqueGrades.map(grade => {
+                      const gi = gradeImpacts[grade] || { mode: 'none' };
+                      return (
+                        <div key={grade} className="border border-slate-200 rounded-lg p-3 space-y-2">
+                          <p className="text-xs font-semibold text-slate-600">{grade}年生</p>
+                          {/* 影響モード選択 */}
+                          <div className="flex flex-wrap gap-1.5">
+                            {[
+                              { value: 'full_cut',    label: '全カット' },
+                              { value: 'partial_cut', label: '部分カット' },
+                              { value: 'none',        label: 'なし（通常）' },
+                            ].map(opt => (
+                              <button
+                                key={opt.value}
+                                type="button"
+                                onClick={() => updateGradeImpact(grade, { mode: opt.value })}
+                                className={`px-2.5 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                                  gi.mode === opt.value ? 'text-white border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                }`}
+                                style={gi.mode === opt.value ? { backgroundColor: '#0d9488' } : {}}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                          {/* 部分カットの詳細 */}
+                          {gi.mode === 'partial_cut' && (
+                            <div className="space-y-2">
+                              <div className="flex gap-1.5 flex-wrap">
+                                {[
+                                  { value: 'morning',   label: '午前カット' },
+                                  { value: 'afternoon', label: '午後カット' },
+                                  { value: 'custom',    label: '時限指定' },
+                                ].map(opt => (
+                                  <button
+                                    key={opt.value}
+                                    type="button"
+                                    onClick={() => updateGradeImpact(grade, { cutMode: opt.value })}
+                                    className={`px-2 py-1 rounded-lg border text-xs font-medium transition-colors ${
+                                      gi.cutMode === opt.value ? 'text-white border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                    }`}
+                                    style={gi.cutMode === opt.value ? { backgroundColor: '#0891b2' } : {}}
+                                  >
+                                    {opt.label}
+                                  </button>
+                                ))}
+                              </div>
+                              {gi.cutMode === 'custom' && (
+                                <div className="flex flex-wrap gap-1">
+                                  {allPeriods.map(p => {
+                                    const selected = (gi.cutPeriods || []).includes(p);
+                                    return (
+                                      <button
+                                        key={p}
+                                        type="button"
+                                        onClick={() => {
+                                          const cur = gi.cutPeriods || [];
+                                          updateGradeImpact(grade, {
+                                            cutPeriods: selected ? cur.filter(x => x !== p) : [...cur, p],
+                                          });
+                                        }}
+                                        className={`w-9 h-9 rounded-lg border text-xs font-medium transition-colors ${
+                                          selected ? 'text-white border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
+                                        }`}
+                                        style={selected ? { backgroundColor: '#0891b2' } : {}}
+                                      >
+                                        {p}限
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
               {/* 曜日変更 の詳細 */}
               {(scheduleImpact === 'day_sub' || scheduleImpact === 'day_sub_partial') && (
                 <div className="mt-3 space-y-2">
@@ -408,81 +510,108 @@ function EventBadge({ event, onClick }) {
   );
 }
 
-// ---- MonthCalendar ----
-function MonthCalendar({ year, month, events, holidays, onDayClick, onEventClick }) {
-  const firstDay = new Date(year, month, 1).getDay();
+const DOW_JP = ['日', '月', '火', '水', '木', '金', '土'];
+
+// 指定曜日(1=月..5=金)に時間割で授業があるか
+function timetableHasLesson(dow, timetable) {
+  const jpDay = ['', '月', '火', '水', '木', '金'][dow];
+  if (!jpDay) return false;
+  return Object.values(timetable[jpDay] || {}).some(c => c?.type === 'lesson');
+}
+
+// ---- MonthCalendar（縦リスト形式） ----
+function MonthCalendar({ year, month, events, holidays, timetable, onDayClick, onEventClick }) {
   const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const cells = [];
-  for (let i = 0; i < firstDay; i++) cells.push(null);
-  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
-
   const today = new Date();
-
-  function getDayStr(day) {
-    return dateStr(year, month, day);
-  }
-
-  // その日に表示すべきイベントを返す
-  function getDayEvents(day) {
-    if (!day) return [];
-    const ds = getDayStr(day);
-    return events.filter(ev => {
-      if (ev.date) return ev.date === ds;
-      if (ev.dateStart && ev.dateEnd) return ev.dateStart <= ds && ds <= ev.dateEnd;
-      return false;
-    });
-  }
 
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-      <div className="grid grid-cols-7 text-center text-xs font-semibold py-2 border-b border-slate-100"
-        style={{ backgroundColor: '#f8fafc' }}>
-        {['日', '月', '火', '水', '木', '金', '土'].map((d, i) => (
-          <div key={d} className={i === 0 ? 'text-red-400' : i === 6 ? 'text-blue-400' : 'text-slate-500'}>{d}</div>
-        ))}
+      {/* 月ヘッダー */}
+      <div className="grid text-xs font-semibold py-1.5 px-3 border-b border-slate-100 bg-slate-50 text-slate-500"
+        style={{ gridTemplateColumns: '3rem 1.5rem 1fr' }}>
+        <span>日付</span>
+        <span>曜</span>
+        <span>行事・予定</span>
       </div>
-      <div className="grid grid-cols-7">
-        {cells.map((day, i) => {
-          const dow = i % 7;
-          const dayEvents = getDayEvents(day);
-          const isToday = day && today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
-          const holidayName = day ? holidays[getDayStr(day)] : null;
-          const isRed = dow === 0 || !!holidayName;
+
+      <div className="divide-y divide-slate-100">
+        {Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+          const ds = dateStr(year, month, day);
+          const dow = new Date(year, month, day).getDay();
+          const isSat = dow === 6;
+          const isSun = dow === 0;
+          const isWeekend = isSat || isSun;
+          const holidayName = holidays[ds];
+          const isHoliday = !!holidayName;
+          const isToday = today.getFullYear() === year && today.getMonth() === month && today.getDate() === day;
+
+          // その日のイベントを取得
+          const dayEvents = events.filter(ev => {
+            if (ev.date) return ev.date === ds;
+            if (ev.dateStart && ev.dateEnd) return ev.dateStart <= ds && ds <= ev.dateEnd;
+            return false;
+          });
+
+          // 授業があるかどうか判定
+          const hasFullCut = dayEvents.some(ev =>
+            ev.type === 'long_vacation' || ev.scheduleImpact === 'full_cut'
+          );
+          const hasLesson = !isWeekend && !isHoliday && !hasFullCut && timetableHasLesson(dow, timetable);
+
+          // compact = 授業なし日（縦幅を縮小）
+          const compact = !hasLesson;
+
+          // 行の背景色
+          let rowBg = 'bg-white';
+          if (isWeekend) rowBg = 'bg-slate-100';
+          else if (isHoliday || hasFullCut) rowBg = 'bg-red-50/60';
+          else if (!timetableHasLesson(dow, timetable)) rowBg = 'bg-slate-50';
+
+          // 日付の文字色
+          let dateColor = 'text-slate-700';
+          if (isSun || isHoliday) dateColor = 'text-red-500';
+          else if (isSat) dateColor = 'text-blue-500';
+          else if (isWeekend) dateColor = 'text-slate-400';
 
           return (
             <div
-              key={i}
-              onClick={() => day && onDayClick(year, month, day)}
-              className={`min-h-[72px] p-1 border-b border-r border-slate-100 text-xs cursor-pointer hover:bg-slate-50 transition-colors ${
-                !day ? 'bg-slate-50/50 cursor-default' : holidayName ? 'bg-red-50/40' : ''
+              key={day}
+              onClick={() => onDayClick(year, month, day)}
+              className={`grid cursor-pointer transition-colors hover:brightness-95 ${rowBg} ${
+                compact ? 'py-0.5' : 'py-1.5'
               }`}
+              style={{ gridTemplateColumns: '3rem 1.5rem 1fr' }}
             >
-              {day && (
-                <>
-                  <div className={`w-6 h-6 flex items-center justify-center rounded-full font-medium mb-0.5 ${
-                    isToday ? 'text-white' : isRed ? 'text-red-400' : dow === 6 ? 'text-blue-400' : 'text-slate-600'
-                  }`}
-                    style={isToday ? { backgroundColor: '#14b8a6' } : {}}
-                  >
-                    {day}
-                  </div>
-                  {holidayName && (
-                    <div className="text-red-400 text-[10px] leading-tight truncate mb-0.5" title={holidayName}>
-                      {holidayName}
-                    </div>
-                  )}
-                  <div className="space-y-0.5 overflow-hidden max-h-[44px]">
-                    {dayEvents.map(ev => (
-                      <EventBadge
-                        key={ev.id}
-                        event={ev}
-                        onClick={e => { e.stopPropagation(); onEventClick(ev); }}
-                      />
-                    ))}
-                  </div>
-                </>
-              )}
+              {/* 日付 */}
+              <div className={`flex items-center justify-end pr-2 shrink-0 ${compact ? 'text-xs' : 'text-sm'}`}>
+                <span
+                  className={`font-bold w-6 h-6 flex items-center justify-center rounded-full ${dateColor}`}
+                  style={isToday ? { backgroundColor: '#14b8a6', color: '#fff' } : {}}
+                >
+                  {day}
+                </span>
+              </div>
+
+              {/* 曜日 */}
+              <div className={`flex items-center text-xs font-medium ${
+                isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-slate-400'
+              } ${compact ? '' : ''}`}>
+                {DOW_JP[dow]}
+              </div>
+
+              {/* 祝日名 + 行事バッジ */}
+              <div className={`flex flex-wrap items-center gap-0.5 min-w-0 pr-2 ${compact ? '' : ''}`}>
+                {holidayName && (
+                  <span className="text-red-400 text-[10px] whitespace-nowrap">{holidayName}</span>
+                )}
+                {dayEvents.map(ev => (
+                  <EventBadge
+                    key={ev.id}
+                    event={ev}
+                    onClick={e => { e.stopPropagation(); onEventClick(ev); }}
+                  />
+                ))}
+              </div>
             </div>
           );
         })}
@@ -494,7 +623,7 @@ function MonthCalendar({ year, month, events, holidays, onDayClick, onEventClick
 // ---- メインページ ----
 export default function EventCalendar() {
   const { state, dispatch } = useApp();
-  const { events = [], schoolYear } = state;
+  const { events = [], schoolYear, timetable = {} } = state;
 
   const startMonth = { year: schoolYear, month: 3 };
   const [viewYear, setViewYear] = useState(startMonth.year);
@@ -588,6 +717,7 @@ export default function EventCalendar() {
               month={viewMonth}
               events={events}
               holidays={holidays}
+              timetable={timetable}
               onDayClick={handleDayClick}
               onEventClick={handleEventClick}
             />

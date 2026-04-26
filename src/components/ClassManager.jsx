@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { Plus, Pencil, Trash2, Check, X, Link } from 'lucide-react';
 import { useApp } from '../context/AppContext';
+import { GRADE_SYSTEMS } from '../context/AppContext';
 
 const GROUP_OPTIONS = Array.from({ length: 10 }, (_, i) => `${i + 1}組`);
 
-function ClassForm({ initial, onSave, onCancel }) {
-  const [grade, setGrade] = useState(initial?.grade || 1);
+function ClassForm({ initial, onSave, onCancel, gradeOptions }) {
+  const [grade, setGrade] = useState(initial?.grade || gradeOptions[0] || 1);
   const [group, setGroup] = useState(initial?.group || '1組');
   const [lessonClass, setLessonClass] = useState(initial?.lessonClass || '');
   const [displayName, setDisplayName] = useState(initial?.displayName || '');
@@ -60,7 +61,7 @@ function ClassForm({ initial, onSave, onCancel }) {
             onChange={e => handleGradeChange(e.target.value)}
             className="w-full border border-slate-200 rounded-md px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-teal-400"
           >
-            {[1, 2, 3].map(g => <option key={g} value={g}>{g}年</option>)}
+            {gradeOptions.map(g => <option key={g} value={g}>{g}年</option>)}
           </select>
         </div>
         <div>
@@ -303,7 +304,8 @@ function LinkMatrix({ subjects, classes, links, timetable, periodsPerDay, onTogg
 
 export default function ClassManager() {
   const { state, dispatch } = useApp();
-  const { classes, subjects, subjectClassLinks, timetable, periodsPerDay } = state;
+  const { classes, subjects, subjectClassLinks, timetable, periodsPerDay, gradeSystem = '3' } = state;
+  const gradeOptions = GRADE_SYSTEMS[gradeSystem]?.grades || [1, 2, 3];
   const [adding, setAdding] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
@@ -362,6 +364,7 @@ export default function ClassManager() {
               initial={cls}
               onSave={handleUpdate}
               onCancel={() => setEditingId(null)}
+              gradeOptions={gradeOptions}
             />
           ) : (
             <div key={cls.id} className="rounded-lg hover:bg-slate-50 group">
@@ -404,7 +407,7 @@ export default function ClassManager() {
           )
         ))}
         {adding && (
-          <ClassForm onSave={handleAdd} onCancel={() => setAdding(false)} />
+          <ClassForm onSave={handleAdd} onCancel={() => setAdding(false)} gradeOptions={gradeOptions} />
         )}
       </div>
 

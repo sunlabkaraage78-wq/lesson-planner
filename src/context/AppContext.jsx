@@ -27,8 +27,16 @@ export const TERM_TEMPLATES = {
   ],
 };
 
+// 学年制の定義
+export const GRADE_SYSTEMS = {
+  '3': { label: '3学年制（高校・デフォルト）', grades: [1, 2, 3] },
+  '4': { label: '4学年制（高専向け）',         grades: [1, 2, 3, 4] },
+  '6': { label: '6学年制（中高一貫校向け）',   grades: [1, 2, 3, 4, 5, 6] },
+};
+
 const defaultState = {
   schoolYear: new Date().getFullYear(),
+  gradeSystem: '3',   // '3' | '4' | '6'
   termType: '3semester',
   terms: TERM_TEMPLATES['3semester'],
   subjects: [],
@@ -37,8 +45,10 @@ const defaultState = {
   timetable: {},
   periodsPerDay: 7,
   events: [],
-  unitTree: {},       // { [subjectId]: LargeUnit[] }
-  noUnitSubjects: [], // 単元設定をスキップする科目IDリスト
+  unitTree: {},             // { [subjectId]: LargeUnit[] }
+  noUnitSubjects: [],       // 単元設定をスキップする科目IDリスト
+  progressRecords: {},      // { `${subjectId}_${classId}`: { [dateStr]: { content, note } } }
+  termUnitBoundaries: {},   // { [subjectId]: { [termId]: unitId | null } }
 };
 
 function getStorageKey(year) {
@@ -64,6 +74,8 @@ function reducer(state, action) {
     case 'SET_YEAR': {
       return loadFromStorage(action.year);
     }
+    case 'SET_GRADE_SYSTEM':
+      return { ...state, gradeSystem: action.gradeSystem };
     case 'SET_TERMS':
       return { ...state, terms: action.terms };
     case 'SET_TERM_TYPE':
@@ -127,6 +139,30 @@ function reducer(state, action) {
       const list = state.noUnitSubjects || [];
       const has = list.includes(action.subjectId);
       return { ...state, noUnitSubjects: has ? list.filter(id => id !== action.subjectId) : [...list, action.subjectId] };
+    }
+    case 'SET_TERM_UNIT_BOUNDARY': {
+      const subBoundaries = state.termUnitBoundaries || {};
+      return {
+        ...state,
+        termUnitBoundaries: {
+          ...subBoundaries,
+          [action.subjectId]: {
+            ...(subBoundaries[action.subjectId] || {}),
+            [action.termId]: action.unitId,
+          },
+        },
+      };
+    }
+    case 'SET_PROGRESS_RECORD': {
+      const key = `${action.subjectId}_${action.classId}`;
+      const existing = state.progressRecords || {};
+      return {
+        ...state,
+        progressRecords: {
+          ...existing,
+          [key]: { ...(existing[key] || {}), [action.date]: action.record },
+        },
+      };
     }
     case 'IMPORT_STATE':
       return { ...action.data };

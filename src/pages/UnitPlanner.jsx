@@ -1,11 +1,12 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   Plus, Trash2, Check, X, ChevronDown, ChevronRight,
-  BookOpen, SkipForward, ArrowUp, ArrowDown,
+  BookOpen, SkipForward, ArrowUp, ArrowDown, Milestone,
 } from 'lucide-react';
 import { useApp } from '../context/AppContext';
 import StepNav from '../components/StepNav';
 import { TEXTBOOK_TEMPLATES, TEMPLATE_SUBJECTS, getTemplatesBySubject } from '../data/textbookTemplates';
+import { flattenUnitTree, TERM_COLORS } from '../utils/unitUtils';
 
 // ---- ユーティリティ ----
 function uid() {
@@ -224,8 +225,24 @@ function MoveButtons({ onUp, onDown }) {
   );
 }
 
+// ---- 学期区切りバナー ----
+function TermBanner({ termName, color }) {
+  return (
+    <div className="flex items-center gap-2 py-1 px-2">
+      <div className="flex-1 h-px" style={{ backgroundColor: color }} />
+      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full text-white flex items-center gap-1"
+        style={{ backgroundColor: color }}>
+        <Milestone size={10} />
+        {termName}末
+      </span>
+      <div className="flex-1 h-px" style={{ backgroundColor: color }} />
+    </div>
+  );
+}
+
 // ---- 単元ツリーエディタ ----
-function UnitTree({ tree, onChange }) {
+// boundaryMap: { [unitId]: { termName, color } }
+function UnitTree({ tree, onChange, boundaryMap = {} }) {
   const [openLarge, setOpenLarge] = useState({});
   const [openMedium, setOpenMedium] = useState({});
 
@@ -255,10 +272,18 @@ function UnitTree({ tree, onChange }) {
             <DeleteButton onDelete={() => onChange(T.deleteLarge(tree, large.id))} />
           </div>
 
+          {/* 大単元が葉（中単元なし）の場合の境界バナー */}
+          {(!large.children?.length) && boundaryMap[large.id] && (
+            <TermBanner termName={boundaryMap[large.id].termName} color={boundaryMap[large.id].color} />
+          )}
+
           {/* 中単元リスト */}
           {openLarge[large.id] !== false && (
             <div className="bg-white">
-              {large.children.map((medium, mi) => (
+              {large.children.map((medium, mi) => {
+                // 中単元に子がない → 中単元自体が境界対象
+                const mediumIsLeaf = !medium.children?.length;
+                return (
                 <div key={medium.id} className="border-t border-slate-100">
                   {/* 中単元ヘッダー */}
                   <div className="flex items-center gap-2 px-4 py-2 bg-teal-50">
@@ -278,27 +303,37 @@ function UnitTree({ tree, onChange }) {
                     />
                     <DeleteButton onDelete={() => onChange(T.deleteMedium(tree, large.id, medium.id))} />
                   </div>
+                  {/* 中単元が境界の場合のバナー */}
+                  {mediumIsLeaf && boundaryMap[medium.id] && (
+                    <TermBanner termName={boundaryMap[medium.id].termName} color={boundaryMap[medium.id].color} />
+                  )}
 
                   {/* 小単元リスト */}
                   {openMedium[medium.id] !== false && (
                     <div className="pl-12 pr-3 py-1.5 space-y-1">
                       {medium.children.map((small, si) => (
-                        <div key={small.id} className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 group">
-                          <span className="text-[10px] text-slate-400 w-8 text-right shrink-0">{li + 1}-{mi + 1}-{si + 1}</span>
-                          <span className="text-[10px] text-slate-400">•</span>
-                          <EditableText
-                            value={small.name}
-                            onSave={name => onChange(T.updateSmall(tree, large.id, medium.id, small.id, name))}
-                            className="flex-1 text-xs text-slate-700"
-                            placeholder="小単元名"
-                          />
-                          <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
-                            <MoveButtons
-                              onUp={() => onChange(T.moveSmall(tree, large.id, medium.id, small.id, -1))}
-                              onDown={() => onChange(T.moveSmall(tree, large.id, medium.id, small.id, 1))}
+                        <div key={small.id}>
+                          <div className="flex items-center gap-2 px-2 py-1 rounded-lg hover:bg-slate-50 group">
+                            <span className="text-[10px] text-slate-400 w-8 text-right shrink-0">{li + 1}-{mi + 1}-{si + 1}</span>
+                            <span className="text-[10px] text-slate-400">•</span>
+                            <EditableText
+                              value={small.name}
+                              onSave={name => onChange(T.updateSmall(tree, large.id, medium.id, small.id, name))}
+                              className="flex-1 text-xs text-slate-700"
+                              placeholder="小単元名"
                             />
-                            <DeleteButton onDelete={() => onChange(T.deleteSmall(tree, large.id, medium.id, small.id))} />
+                            <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
+                              <MoveButtons
+                                onUp={() => onChange(T.moveSmall(tree, large.id, medium.id, small.id, -1))}
+                                onDown={() => onChange(T.moveSmall(tree, large.id, medium.id, small.id, 1))}
+                              />
+                              <DeleteButton onDelete={() => onChange(T.deleteSmall(tree, large.id, medium.id, small.id))} />
+                            </div>
                           </div>
+                          {/* 小単元境界バナー */}
+                          {boundaryMap[small.id] && (
+                            <TermBanner termName={boundaryMap[small.id].termName} color={boundaryMap[small.id].color} />
+                          )}
                         </div>
                       ))}
                       <button
@@ -309,7 +344,8 @@ function UnitTree({ tree, onChange }) {
                     </div>
                   )}
                 </div>
-              ))}
+                );
+              })}
 
               <div className="px-4 py-2 border-t border-slate-100">
                 <button
@@ -332,10 +368,70 @@ function UnitTree({ tree, onChange }) {
   );
 }
 
+// ---- 学期区切り設定パネル ----
+function TermBoundaryPanel({ subjectId, tree, terms, boundaries, onSet }) {
+  const validTerms = (terms || []).filter(t => t.start && t.end);
+  const flatItems = useMemo(() => flattenUnitTree(tree), [tree]);
+
+  if (validTerms.length === 0) {
+    return (
+      <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-400">
+        学期区切りを設定するには、まずステップ1で学期の開始・終了日を入力してください。
+      </div>
+    );
+  }
+
+  if (flatItems.length === 0) {
+    return (
+      <div className="mt-4 p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-400">
+        単元を登録すると、ここで学期区切りを設定できます。
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-5 bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="flex items-center gap-2 px-4 py-2.5 border-b border-slate-100 bg-slate-50">
+        <Milestone size={14} className="text-slate-400" />
+        <h4 className="text-xs font-semibold text-slate-600">学期区切り設定</h4>
+        <span className="text-[11px] text-slate-400">— 各学期末にどの単元まで進むかを設定</span>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {validTerms.map((term, idx) => {
+          const color = TERM_COLORS[idx % TERM_COLORS.length];
+          const currentUnitId = boundaries[term.id] ?? null;
+          return (
+            <div key={term.id} className="flex items-center gap-3 px-4 py-2.5">
+              <span
+                className="text-xs font-bold px-2 py-0.5 rounded text-white shrink-0"
+                style={{ backgroundColor: color }}
+              >
+                {term.name}末
+              </span>
+              <select
+                value={currentUnitId || ''}
+                onChange={e => onSet(term.id, e.target.value || null)}
+                className="flex-1 text-xs border border-slate-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-teal-400"
+              >
+                <option value="">（設定なし）</option>
+                {flatItems.map((item, i) => (
+                  <option key={item.id} value={item.id}>
+                    {i + 1}. {item.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ---- メインページ ----
 export default function UnitPlanner() {
   const { state, dispatch } = useApp();
-  const { subjects = [], unitTree = {}, noUnitSubjects = [] } = state;
+  const { subjects = [], unitTree = {}, noUnitSubjects = [], terms = [], termUnitBoundaries = {} } = state;
   const [activeSubjectId, setActiveSubjectId] = useState(subjects[0]?.id || null);
   const [showTemplateModal, setShowTemplateModal] = useState(false);
   const [confirmClear, setConfirmClear] = useState(false);
@@ -344,9 +440,26 @@ export default function UnitPlanner() {
   const isNoUnit = activeSubjectId ? noUnitSubjects.includes(activeSubjectId) : false;
   const tree = (activeSubjectId ? unitTree[activeSubjectId] : null) || [];
 
+  // 境界マップ: { [unitId]: { termName, color } }
+  const boundaryMap = useMemo(() => {
+    const map = {};
+    if (!activeSubjectId) return map;
+    const subBoundaries = termUnitBoundaries[activeSubjectId] || {};
+    const validTerms = (terms || []).filter(t => t.start && t.end);
+    validTerms.forEach((term, idx) => {
+      const uid = subBoundaries[term.id];
+      if (uid) map[uid] = { termName: term.name, color: TERM_COLORS[idx % TERM_COLORS.length] };
+    });
+    return map;
+  }, [activeSubjectId, termUnitBoundaries, terms]);
+
   function handleChange(newTree) {
     if (!activeSubjectId) return;
     dispatch({ type: 'SET_UNIT_TREE', subjectId: activeSubjectId, tree: newTree });
+  }
+
+  function handleSetBoundary(termId, unitId) {
+    dispatch({ type: 'SET_TERM_UNIT_BOUNDARY', subjectId: activeSubjectId, termId, unitId });
   }
 
   function handleApplyTemplate(template) {
@@ -465,7 +578,14 @@ export default function UnitPlanner() {
                         </p>
                       </div>
                     )}
-                    <UnitTree tree={tree} onChange={handleChange} />
+                    <UnitTree tree={tree} onChange={handleChange} boundaryMap={boundaryMap} />
+                    <TermBoundaryPanel
+                      subjectId={activeSubjectId}
+                      tree={tree}
+                      terms={terms}
+                      boundaries={termUnitBoundaries[activeSubjectId] || {}}
+                      onSet={handleSetBoundary}
+                    />
                   </>
                 )}
               </>
