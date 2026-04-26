@@ -275,7 +275,7 @@ export default function ProgressView() {
   const { subjects, classes, subjectClassLinks, timetable, events, schoolYear, terms, periodsPerDay, unitTree = {}, termUnitBoundaries = {} } = state;
   const progressRecords = state.progressRecords || {};
 
-  const [selectedSubjectId, setSelectedSubjectId] = useState(null);
+  const [selectedSubjectId, setSelectedSubjectId] = useState('__all__');
   const [selectedTermIdx, setSelectedTermIdx] = useState(0);
   const [showAutoFill, setShowAutoFill] = useState(false);
   const [mobileClassId, setMobileClassId] = useState(null);
