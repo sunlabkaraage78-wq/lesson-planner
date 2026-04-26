@@ -30,7 +30,17 @@ const T = {
   addLarge: (tree) => [...tree, { id: uid(), name: '新しい大単元', children: [] }],
   addMedium: (tree, lid) => tree.map(l => l.id !== lid ? l : { ...l, children: [...l.children, { id: uid(), name: '新しい中単元', children: [] }] }),
   addSmall: (tree, lid, mid) => tree.map(l => l.id !== lid ? l : {
-    ...l, children: l.children.map(m => m.id !== mid ? m : { ...m, children: [...m.children, { id: uid(), name: '新しい小単元' }] }),
+    ...l, children: l.children.map(m => m.id !== mid ? m : { ...m, children: [...m.children, { id: uid(), name: '' }] }),
+  }),
+  addSmallAfterWithId: (tree, lid, mid, sid, newId) => tree.map(l => l.id !== lid ? l : {
+    ...l, children: l.children.map(m => m.id !== mid ? m : {
+      ...m, children: (() => {
+        const i = m.children.findIndex(s => s.id === sid);
+        const a = [...m.children];
+        a.splice(i + 1, 0, { id: newId, name: '' });
+        return a;
+      })(),
+    }),
   }),
   updateLarge: (tree, lid, name) => tree.map(l => l.id === lid ? { ...l, name } : l),
   updateMedium: (tree, lid, mid, name) => tree.map(l => l.id !== lid ? l : { ...l, children: l.children.map(m => m.id === mid ? { ...m, name } : m) }),
@@ -166,8 +176,8 @@ function TemplateModal({ onApply, onClose }) {
 }
 
 // ---- インライン編集可能テキスト ----
-function EditableText({ value, onSave, className, placeholder }) {
-  const [editing, setEditing] = useState(false);
+function EditableText({ value, onSave, className, placeholder, autoEdit }) {
+  const [editing, setEditing] = useState(!!autoEdit);
   const [draft, setDraft] = useState(value);
 
   function commit() {
@@ -184,7 +194,7 @@ function EditableText({ value, onSave, className, placeholder }) {
         onChange={e => setDraft(e.target.value)}
         onBlur={commit}
         onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') { setDraft(value); setEditing(false); } }}
-        className={`${className} bg-white border border-teal-400 rounded px-1 outline-none focus:ring-2 focus:ring-teal-300`}
+        className={`${className} bg-white text-slate-800 border border-teal-400 rounded px-1 outline-none focus:ring-2 focus:ring-teal-300`}
       />
     );
   }
@@ -245,6 +255,7 @@ function TermBanner({ termName, color }) {
 function UnitTree({ tree, onChange, boundaryMap = {} }) {
   const [openLarge, setOpenLarge] = useState({});
   const [openMedium, setOpenMedium] = useState({});
+  const [newUnitId, setNewUnitId] = useState(null);
 
   function toggleLarge(id) { setOpenLarge(p => ({ ...p, [id]: !p[id] })); }
   function toggleMedium(id) { setOpenMedium(p => ({ ...p, [id]: !p[id] })); }
@@ -318,11 +329,23 @@ function UnitTree({ tree, onChange, boundaryMap = {} }) {
                             <span className="text-[10px] text-slate-400">•</span>
                             <EditableText
                               value={small.name}
-                              onSave={name => onChange(T.updateSmall(tree, large.id, medium.id, small.id, name))}
+                              onSave={name => { onChange(T.updateSmall(tree, large.id, medium.id, small.id, name)); setNewUnitId(null); }}
                               className="flex-1 text-xs text-slate-700"
-                              placeholder="小単元名"
+                              placeholder="小単元名を入力"
+                              autoEdit={newUnitId === small.id}
                             />
                             <div className="opacity-0 group-hover:opacity-100 flex items-center gap-1">
+                              <button
+                                onClick={() => {
+                                  const newId = uid();
+                                  onChange(T.addSmallAfterWithId(tree, large.id, medium.id, small.id, newId));
+                                  setNewUnitId(newId);
+                                }}
+                                title="下に小単元を追加"
+                                className="p-0.5 rounded text-slate-400 hover:text-teal-600 hover:bg-teal-50 transition-colors"
+                              >
+                                <Plus size={11} />
+                              </button>
                               <MoveButtons
                                 onUp={() => onChange(T.moveSmall(tree, large.id, medium.id, small.id, -1))}
                                 onDown={() => onChange(T.moveSmall(tree, large.id, medium.id, small.id, 1))}
@@ -337,7 +360,16 @@ function UnitTree({ tree, onChange, boundaryMap = {} }) {
                         </div>
                       ))}
                       <button
-                        onClick={() => onChange(T.addSmall(tree, large.id, medium.id))}
+                        onClick={() => {
+                          const newId = uid();
+                          const newTree = [...tree.map(l => l.id !== large.id ? l : {
+                            ...l, children: l.children.map(m => m.id !== medium.id ? m : {
+                              ...m, children: [...m.children, { id: newId, name: '' }],
+                            }),
+                          })];
+                          onChange(newTree);
+                          setNewUnitId(newId);
+                        }}
                         className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-teal-600 px-2 py-1 rounded hover:bg-teal-50 transition-colors">
                         <Plus size={11} /> 小単元を追加
                       </button>
