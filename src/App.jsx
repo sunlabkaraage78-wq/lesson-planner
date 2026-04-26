@@ -11,7 +11,7 @@ function isMobile() {
 }
 
 function DefaultRedirect() {
-  return <Navigate to={isMobile() ? '/progress' : '/setup'} replace />;
+  return <Navigate to="/setup" replace />;
 }
 
 export default function App() {
