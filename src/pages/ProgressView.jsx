@@ -217,8 +217,9 @@ function ContentCell({ value, note, shifted, onSave, onAdvance }) {
         ref={contentRef}
         value={draft}
         onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); save(); } }}
         className="border border-blue-400 rounded px-1 py-0.5 text-sm w-full"
-        placeholder="授業内容"
+        placeholder="授業内容　※Enterで保存"
       />
       {/* ずらしプリセット */}
       <div className="flex flex-wrap gap-1">
