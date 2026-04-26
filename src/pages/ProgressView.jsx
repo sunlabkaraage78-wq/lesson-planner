@@ -313,26 +313,42 @@ export default function ProgressView() {
     return result;
   }, [activeSubjectId, isAllMode, linkedClasses, schoolYear, timetable, events, holidays, terms, periodsPerDay]);
 
-  // 全授業モード用：全科目×クラスの授業日を収集
-  const allLessonsData = useMemo(() => {
+  // 全授業モード用：全科目×クラスを列として定義
+  const allColumns = useMemo(() => {
     if (!isAllMode) return [];
-    const rows = [];
-    for (const subject of subjects) {
+    return subjects.flatMap(subject => {
       const linkedIds = new Set(subjectClassLinks.filter(l => l.subjectId === subject.id).map(l => l.classId));
-      const subjectClasses = classes.filter(c => linkedIds.has(c.id));
-      for (const cls of subjectClasses) {
-        const dates = generateLessonDates({
-          subjectId: subject.id, classId: cls.id, schoolYear,
-          timetable, events, holidays, terms, periodsPerDay, classes,
-        });
-        dates.forEach((date, idx) => {
-          rows.push({ date, subject, cls, lessonNum: idx + 1 });
-        });
+      return classes.filter(c => linkedIds.has(c.id)).map(cls => ({
+        subject, cls, key: `${subject.id}_${cls.id}`,
+      }));
+    });
+  }, [isAllMode, subjects, subjectClassLinks, classes]);
+
+  const allColumnDateSets = useMemo(() => {
+    if (!isAllMode || allColumns.length === 0) return {};
+    const result = {};
+    for (const { subject, cls, key } of allColumns) {
+      const dates = generateLessonDates({
+        subjectId: subject.id, classId: cls.id, schoolYear,
+        timetable, events, holidays, terms, periodsPerDay, classes,
+      });
+      result[key] = new Set(dates);
+    }
+    return result;
+  }, [isAllMode, allColumns, schoolYear, timetable, events, holidays, terms, periodsPerDay, classes]);
+
+  const allColumnCounters = useMemo(() => {
+    if (!isAllMode) return {};
+    const counters = {};
+    for (const { key } of allColumns) {
+      counters[key] = {};
+      let n = 0;
+      for (const d of allYearDates) {
+        if (allColumnDateSets[key]?.has(d)) { n++; counters[key][d] = n; }
       }
     }
-    rows.sort((a, b) => a.date.localeCompare(b.date) || a.subject.name.localeCompare(b.subject.name));
-    return rows;
-  }, [isAllMode, subjects, subjectClassLinks, classes, schoolYear, timetable, events, holidays, terms, periodsPerDay]);
+    return counters;
+  }, [isAllMode, allColumns, allColumnDateSets, allYearDates]);
 
   const allYearDates = useMemo(() => generateAllDates(schoolYear), [schoolYear]);
 
@@ -512,110 +528,85 @@ export default function ProgressView() {
       {/* ===== 全授業ビュー ===== */}
       {isAllMode && (
         <div className="flex-1 overflow-auto">
-          {allLessonsData.length === 0 ? (
+          {allColumns.length === 0 ? (
             <div className="text-gray-400 text-sm p-4">授業日が見つかりません。時間割・クラス・学期を設定してください。</div>
           ) : (() => {
-            const filtered = allLessonsData.filter(row => {
-              if (selectedTermIdx === -1 || validTerms.length === 0) return true;
-              const term = validTerms[selectedTermIdx];
-              return term && row.date >= term.start && row.date <= term.end;
-            });
+            const filtered = filteredAllDates;
             return (
-              <>
-              {/* モバイル: カード */}
-              <div className="sm:hidden p-3 space-y-1">
-                {filtered.map((row, i) => {
-                  const { date, subject, cls, lessonNum } = row;
-                  const key = `${subject.id}_${cls.id}`;
-                  const record = progressRecords[key]?.[date] || { content: '', note: '' };
-                  const dow = new Date(date).getDay();
-                  const isSun = dow === 0, isSat = dow === 6;
-                  const isHoliday = !!holidays[date];
-                  const isToday = date === todayStr;
-                  const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
-                  return (
-                    <div key={`${date}_${subject.id}_${cls.id}`}
-                      ref={isToday && i === filtered.findIndex(r => r.date === todayStr) ? todayRef : null}
-                      className={`rounded-lg border p-2 ${isToday ? 'border-teal-400 bg-teal-50 shadow-sm' : record.shifted ? 'bg-white border-red-300' : 'bg-white border-gray-200'}`}>
-                      <div className="flex gap-2 items-start">
-                        <div className={`shrink-0 w-12 text-xs text-center ${dateTextColor}`}>
-                          {isToday && <div className="text-[10px] font-bold text-white rounded px-1 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>}
-                          <div className="font-medium">{formatMonth(date)}/{formatDay(date)}</div>
-                          <div className="opacity-60">{formatWeek(date)}曜</div>
-                        </div>
-                        <div className="shrink-0 w-5 text-xs text-gray-400 text-center pt-0.5">{lessonNum}</div>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[10px] text-gray-400 mb-0.5">{subject.name}｜{cls.displayName}</div>
-                          <ContentCell
-                            value={record.content} note={record.note} shifted={record.shifted}
-                            onSave={rec => dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: subject.id, classId: cls.id, date, record: rec })}
-                            onAdvance={null}
-                          />
-                          {record.note && record.note.trim() && (
-                            <div className="text-xs text-amber-700 bg-amber-100 rounded px-1 py-0.5 mt-0.5 whitespace-pre-wrap">{record.note}</div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
+              <div className="overflow-x-auto p-2">
+                <table className="border-collapse text-sm bg-white shadow-sm rounded-lg overflow-hidden">
+                  <thead className="sticky top-0 z-10">
+                    {/* 科目行 */}
+                    <tr className="bg-gray-50 text-gray-500 text-xs">
+                      <th className="border border-gray-200 px-2 py-1 whitespace-nowrap" colSpan={3} />
+                      {allColumns.map(({ subject, cls, key }) => (
+                        <th key={key} className="border border-gray-200 px-1 py-1 text-center min-w-[100px] max-w-[120px]">
+                          <div className="text-[10px] text-gray-400 truncate">{subject.name}</div>
+                          <div className="font-semibold text-gray-600 truncate">{cls.displayName}</div>
+                        </th>
+                      ))}
+                    </tr>
+                    {/* 回ラベル行 */}
+                    <tr className="bg-gray-100 text-gray-500 text-xs">
+                      <th className="border border-gray-200 px-2 py-1 whitespace-nowrap">月</th>
+                      <th className="border border-gray-200 px-2 py-1 whitespace-nowrap">日</th>
+                      <th className="border border-gray-200 px-2 py-1 whitespace-nowrap">曜</th>
+                      {allColumns.map(({ key }) => (
+                        <th key={key} className="border border-gray-200 px-1 py-1 text-center text-[10px] text-gray-400">授業内容</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(dateStr => {
+                      const anyLesson = allColumns.some(({ key }) => allColumnDateSets[key]?.has(dateStr));
+                      if (!anyLesson) return null;
+                      const dow = new Date(dateStr).getDay();
+                      const isSat = dow === 6, isSun = dow === 0;
+                      const isHoliday = !!holidays[dateStr];
+                      const isToday = dateStr === todayStr;
+                      const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
+                      const dowTextColor  = isToday ? 'text-teal-500' : isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400';
+                      const rowBg = isToday ? 'bg-teal-50' : '';
+                      return (
+                        <tr key={dateStr} ref={isToday ? todayRef : null} className={rowBg}
+                          style={isToday ? { outline: '2px solid #0d9488', outlineOffset: '-1px' } : {}}>
+                          <td className={`border border-gray-200 text-center px-1 py-1 whitespace-nowrap text-xs ${dateTextColor}`}>
+                            {isToday && <div className="text-[9px] font-bold text-white rounded px-0.5 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>}
+                            {formatMonth(dateStr)}
+                          </td>
+                          <td className={`border border-gray-200 text-center px-1 py-1 font-medium whitespace-nowrap text-xs ${dateTextColor}`}>{formatDay(dateStr)}</td>
+                          <td className={`border border-gray-200 text-center px-1 py-1 whitespace-nowrap text-xs ${dowTextColor}`}>{formatWeek(dateStr)}</td>
+                          {allColumns.map(({ subject, cls, key }) => {
+                            const hasLesson = allColumnDateSets[key]?.has(dateStr);
+                            const lessonNum = allColumnCounters[key]?.[dateStr];
+                            const record = progressRecords[key]?.[dateStr] || { content: '', note: '' };
+                            if (!hasLesson) {
+                              return <td key={key} className="border border-gray-200 bg-gray-50" />;
+                            }
+                            return (
+                              <td key={key} className="border border-gray-200 px-1 py-0.5 align-top min-w-[100px] max-w-[120px]">
+                                <div className="flex gap-0.5 items-start">
+                                  <span className="flex-none w-4 text-center text-[10px] text-gray-400 pt-0.5">{lessonNum}</span>
+                                  <div className="flex-1 min-w-0">
+                                    <ContentCell
+                                      value={record.content} note={record.note} shifted={record.shifted}
+                                      onSave={rec => dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: subject.id, classId: cls.id, date: dateStr, record: rec })}
+                                      onAdvance={null}
+                                    />
+                                    {record.note && record.note.trim() && (
+                                      <div className="text-[10px] text-amber-700 bg-amber-100 rounded px-0.5 py-px mt-0.5 truncate">{record.note}</div>
+                                    )}
+                                  </div>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
               </div>
-              {/* デスクトップ: テーブル */}
-              <div className="hidden sm:block p-4">
-                <div className="overflow-x-auto">
-                  <table className="border-collapse text-sm bg-white shadow-sm rounded-lg overflow-hidden w-full">
-                    <thead className="sticky top-0 z-10">
-                      <tr className="bg-gray-100 text-gray-600 text-xs">
-                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">月</th>
-                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">日</th>
-                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">曜</th>
-                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">科目</th>
-                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">クラス</th>
-                        <th className="border border-gray-200 px-2 py-2 whitespace-nowrap">回</th>
-                        <th className="border border-gray-200 px-3 py-2 text-center min-w-[220px]">授業内容</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filtered.map((row, i) => {
-                        const { date, subject, cls, lessonNum } = row;
-                        const key = `${subject.id}_${cls.id}`;
-                        const record = progressRecords[key]?.[date] || { content: '', note: '' };
-                        const dow = new Date(date).getDay();
-                        const isSat = dow === 6, isSun = dow === 0;
-                        const isHoliday = !!holidays[date];
-                        const isToday = date === todayStr;
-                        const dateTextColor = isToday ? 'text-teal-700' : isSun || isHoliday ? 'text-red-500' : isSat ? 'text-blue-500' : 'text-gray-700';
-                        const dowTextColor  = isToday ? 'text-teal-500' : isSun || isHoliday ? 'text-red-400' : isSat ? 'text-blue-400' : 'text-gray-400';
-                        const rowBg = isToday ? 'bg-teal-50' : record.shifted ? 'bg-red-50' : '';
-                        return (
-                          <tr key={`${date}_${subject.id}_${cls.id}`}
-                            ref={isToday && i === filtered.findIndex(r => r.date === todayStr) ? todayRef : null}
-                            className={rowBg}
-                            style={isToday ? { outline: '2px solid #0d9488', outlineOffset: '-1px' } : {}}>
-                            <td className={`border border-gray-200 text-center px-2 py-1 whitespace-nowrap ${dateTextColor}`}>
-                              {isToday ? <><div className="text-[10px] font-bold text-white rounded px-0.5 mb-0.5" style={{ backgroundColor: '#0d9488' }}>今日</div>{formatMonth(date)}</> : formatMonth(date)}
-                            </td>
-                            <td className={`border border-gray-200 text-center px-2 py-1 font-medium whitespace-nowrap ${dateTextColor}`}>{formatDay(date)}</td>
-                            <td className={`border border-gray-200 text-center px-2 py-1 whitespace-nowrap ${dowTextColor}`}>{formatWeek(date)}</td>
-                            <td className="border border-gray-200 px-2 py-1 text-xs whitespace-nowrap text-gray-700">{subject.name}</td>
-                            <td className="border border-gray-200 px-2 py-1 text-xs whitespace-nowrap text-gray-600">{cls.displayName}</td>
-                            <td className="border border-gray-200 px-2 py-1 text-center text-xs text-gray-400">{lessonNum}</td>
-                            <td className="border border-gray-200 px-1 py-0.5 align-top">
-                              <ContentCell value={record.content} note={record.note} shifted={record.shifted}
-                                onSave={rec => dispatch({ type: 'SET_PROGRESS_RECORD', subjectId: subject.id, classId: cls.id, date, record: rec })}
-                                onAdvance={null} />
-                              {record.note && record.note.trim() && (
-                                <div className="text-xs text-amber-700 bg-amber-100 rounded px-1 py-0.5 mt-0.5 whitespace-pre-wrap">{record.note}</div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-              </>
             );
           })()}
         </div>
