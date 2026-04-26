@@ -337,6 +337,8 @@ export default function ProgressView() {
     return result;
   }, [isAllMode, allColumns, schoolYear, timetable, events, holidays, terms, periodsPerDay, classes]);
 
+  const allYearDates = useMemo(() => generateAllDates(schoolYear), [schoolYear]);
+
   const allColumnCounters = useMemo(() => {
     if (!isAllMode) return {};
     const counters = {};
@@ -349,8 +351,6 @@ export default function ProgressView() {
     }
     return counters;
   }, [isAllMode, allColumns, allColumnDateSets, allYearDates]);
-
-  const allYearDates = useMemo(() => generateAllDates(schoolYear), [schoolYear]);
 
   const filteredAllDates = useMemo(() => {
     if (selectedTermIdx === -1 || validTerms.length === 0) return allYearDates;
