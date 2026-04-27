@@ -1,22 +1,17 @@
 import { createContext, useContext, useReducer, useEffect, useState, useCallback, useRef } from 'react';
+import { db } from '../firebase';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 
-const API_BASE = '/api/data';
-
-async function fetchFromKV(year) {
+async function fetchFromFirebase(year) {
   try {
-    const res = await fetch(`${API_BASE}/${year}`);
-    if (!res.ok) return null;
-    return await res.json();
+    const snap = await getDoc(doc(db, 'states', `state_${year}`));
+    return snap.exists() ? snap.data() : null;
   } catch { return null; }
 }
 
-async function saveToKV(state) {
+async function saveToFirebase(state) {
   try {
-    await fetch(`${API_BASE}/${state.schoolYear}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state),
-    });
+    await setDoc(doc(db, 'states', `state_${state.schoolYear}`), state);
   } catch {}
 }
 
@@ -228,21 +223,21 @@ export function AppProvider({ children }) {
   const [past, setPast] = useState([]);
   const saveTimer = useRef(null);
 
-  // 起動時にKVから最新データを取得してマージ
+  // 起動時にFirebaseから最新データを取得してマージ
   useEffect(() => {
-    fetchFromKV(state.schoolYear).then(kvData => {
-      if (kvData && kvData.schoolYear) {
-        dispatch({ type: 'IMPORT_STATE', data: kvData });
+    fetchFromFirebase(state.schoolYear).then(fbData => {
+      if (fbData && fbData.schoolYear) {
+        dispatch({ type: 'IMPORT_STATE', data: fbData });
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // state変化時: localStorage + KVに保存（KVは1秒デバウンス）
+  // state変化時: localStorage + Firebaseに保存（Firebaseは1秒デバウンス）
   useEffect(() => {
     saveToStorage(state);
     if (saveTimer.current) clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => saveToKV(state), 1000);
+    saveTimer.current = setTimeout(() => saveToFirebase(state), 1000);
   }, [state]);
 
   const dispatchWithHistory = useCallback((action) => {
